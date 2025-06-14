@@ -64,6 +64,15 @@ const ownerBalanceSchema = new mongoose.Schema({
 
 const OwnerBalance = mongoose.model('OwnerBalance', ownerBalanceSchema);
 
+// Schema for Pending Payments (used in pendingpayment.html and owner_home.html)
+const pendingPaymentSchema = new mongoose.Schema({
+  amount: { type: Number, required: true },
+  timestamp: { type: String, required: true },
+  paid: { type: Boolean, default: false }
+});
+
+const PendingPayment = mongoose.model('PendingPayment', pendingPaymentSchema);
+
 // API to create or update a form (used in form.html and details.html)
 app.post('/forms', async (req, res) => {
   const { phone, name, date, products } = req.body;
@@ -157,6 +166,14 @@ app.put('/forms/:phone/paid', async (req, res) => {
         paymentDate
       });
       await sell.save();
+
+      // Update owner's bank balance
+      let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+      if (!ownerBalance) {
+        ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+      }
+      ownerBalance.balance += total;
+      await ownerBalance.save();
 
       res.json(form);
     } else {
@@ -274,6 +291,93 @@ app.put('/owner-balance', async (req, res) => {
     res.json({ balance: ownerBalance.balance });
   } catch (err) {
     res.status(500).json({ error: 'Error updating balance: ' + err.message });
+  }
+});
+
+// Razorpay integration
+const Razorpay = require('razorpay');
+const razorpay = new Razorpay({
+  key_id: 'YOUR_KEY_ID',
+  key_secret: 'YOUR_KEY_SECRET'
+});
+
+app.post('/create-payment-link', async (req, res) => {
+  const { amount, customerName, customerPhone } = req.body;
+  try {
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: amount,
+      currency: 'INR',
+      description: `Payment for ${customerName}`,
+      customer: {
+        name: customerName,
+        contact: customerPhone
+      },
+      notify: {
+        sms: true,
+        email: false
+      }
+    });
+    res.json({ paymentLink: paymentLink.short_url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API to save a pending payment
+app.post('/pending-payments', async (req, res) => {
+  const { amount, timestamp } = req.body;
+  try {
+    const pendingPayment = new PendingPayment({ amount, timestamp });
+    await pendingPayment.save();
+    res.status(201).json({ message: 'Pending payment saved successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error saving pending payment: ' + err.message });
+  }
+});
+
+// API to get pending payments for the previous day
+app.get('/pending-payments/previous-day', async (req, res) => {
+  try {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const yesterdayStart = yesterday.toISOString().split('T')[0]; // e.g., "2025-06-14"
+
+    const pendingPayments = await PendingPayment.find({
+      timestamp: { $gte: `${yesterdayStart}T00:00:00.000Z`, $lt: `${yesterdayStart}T23:59:59.999Z` },
+      paid: false
+    });
+
+    res.json(pendingPayments);
+  } catch (err) {
+    res.status(500).json({ error: 'Error retrieving pending payments: ' + err.message });
+  }
+});
+
+// API to mark pending payments as paid
+app.put('/pending-payments/pay', async (req, res) => {
+  const { timestamp } = req.body;
+  try {
+    const pendingPayment = await PendingPayment.findOneAndUpdate(
+      { timestamp, paid: false },
+      { paid: true },
+      { new: true }
+    );
+    if (pendingPayment) {
+      // Update owner's bank balance for pending payment
+      let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+      if (!ownerBalance) {
+        ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+      }
+      ownerBalance.balance += pendingPayment.amount;
+      await ownerBalance.save();
+
+      res.json({ message: 'Pending payment marked as paid', balance: ownerBalance.balance });
+    } else {
+      res.status(404).json({ error: 'Pending payment not found or already paid' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Error marking payment as paid: ' + err.message });
   }
 });
 
