@@ -297,13 +297,16 @@ app.put('/owner-balance', async (req, res) => {
 // Razorpay integration
 const Razorpay = require('razorpay');
 const razorpay = new Razorpay({
-  key_id: 'YOUR_KEY_ID',
-  key_secret: 'YOUR_KEY_SECRET'
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
 app.post('/create-payment-link', async (req, res) => {
   const { amount, customerName, customerPhone } = req.body;
   try {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      throw new Error('Razorpay credentials are missing');
+    }
     const paymentLink = await razorpay.paymentLink.create({
       amount: amount,
       currency: 'INR',
