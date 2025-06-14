@@ -152,6 +152,6 @@ app.get('/shopping/:phone', async (req, res) => {
 });
 
 // Start the backend server
-app.listen(3000, () => {
-  console.log('Backend server running on http://localhost:3000');
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Backend server running on http://localhost:' + (process.env.PORT || 3000));
 });
