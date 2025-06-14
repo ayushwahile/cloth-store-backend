@@ -66,6 +66,16 @@ app.post('/forms', async (req, res) => {
   }
 });
 
+// API to get all forms (used in search.html)
+app.get('/forms', async (req, res) => {
+  try {
+    const forms = await Form.find();
+    res.json(forms);
+  } catch (err) {
+    res.status(500).json({ error: 'Error retrieving forms: ' + err.message });
+  }
+});
+
 // API to get a form by phone number (used in search.html, search_.html, owner_home.html)
 app.get('/forms/:phone', async (req, res) => {
   const { phone } = req.params;
