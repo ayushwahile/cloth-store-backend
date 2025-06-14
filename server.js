@@ -66,10 +66,16 @@ app.post('/forms', async (req, res) => {
   }
 });
 
-// API to get all forms (used in search.html)
+// API to get all forms (used in search.html and search_.html)
 app.get('/forms', async (req, res) => {
   try {
-    const forms = await Form.find();
+    const fields = req.query.fields; // Check for fields query parameter
+    let forms;
+    if (fields === 'phone') {
+      forms = await Form.find({}, 'phone'); // Only fetch phone numbers
+    } else {
+      forms = await Form.find(); // Fetch full form data
+    }
     res.json(forms);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving forms: ' + err.message });
