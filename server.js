@@ -294,37 +294,37 @@ app.put('/owner-balance', async (req, res) => {
   }
 });
 
-// Razorpay integration
-const Razorpay = require('razorpay');
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
-});
+// Razorpay integration (commented out temporarily to allow deployment)
+// const Razorpay = require('razorpay');
+// const razorpay = new Razorpay({
+//   key_id: process.env.RAZORPAY_KEY_ID,
+//   key_secret: process.env.RAZORPAY_KEY_SECRET
+// });
 
-app.post('/create-payment-link', async (req, res) => {
-  const { amount, customerName, customerPhone } = req.body;
-  try {
-    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-      throw new Error('Razorpay credentials are missing');
-    }
-    const paymentLink = await razorpay.paymentLink.create({
-      amount: amount,
-      currency: 'INR',
-      description: `Payment for ${customerName}`,
-      customer: {
-        name: customerName,
-        contact: customerPhone
-      },
-      notify: {
-        sms: true,
-        email: false
-      }
-    });
-    res.json({ paymentLink: paymentLink.short_url });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// app.post('/create-payment-link', async (req, res) => {
+//   const { amount, customerName, customerPhone } = req.body;
+//   try {
+//     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+//       throw new Error('Razorpay credentials are missing');
+//     }
+//     const paymentLink = await razorpay.paymentLink.create({
+//       amount: amount,
+//       currency: 'INR',
+//       description: `Payment for ${customerName}`,
+//       customer: {
+//         name: customerName,
+//         contact: customerPhone
+//       },
+//       notify: {
+//         sms: true,
+//         email: false
+//       }
+//     });
+//     res.json({ paymentLink: paymentLink.short_url });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 // API to save a pending payment
 app.post('/pending-payments', async (req, res) => {
