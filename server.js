@@ -17,9 +17,11 @@ const formSchema = new mongoose.Schema({
   name: { type: String, required: true },
   date: { type: String, required: true },
   products: [{
-    name: String,
-    quantity: Number,
-    price: Number,
+    brandName: String,
+    productName: String,
+    size: String,
+    mrp: Number,
+    selectedFloor: String,
     checked: { type: Boolean, default: false } // For border change in details.html
   }],
   paid: { type: Boolean, default: false } // For payment status
@@ -34,14 +36,25 @@ const sellSchema = new mongoose.Schema({
   date: { type: String, required: true },
   total: { type: Number, required: true },
   products: [{
-    name: String,
-    quantity: Number,
-    price: Number
+    brandName: String,
+    productName: String,
+    size: String,
+    mrp: Number
   }],
   paymentDate: { type: String, required: true }
 });
 
 const Sell = mongoose.model('Sell', sellSchema);
+
+// Schema for Products (used in products.html)
+const productSchema = new mongoose.Schema({
+  brandName: { type: String, required: true },
+  productName: { type: String, required: true },
+  size: { type: String, required: true },
+  mrp: { type: Number, required: true }
+});
+
+const Product = mongoose.model('Product', productSchema);
 
 // API to create or update a form (used in form.html and details.html)
 app.post('/forms', async (req, res) => {
@@ -126,7 +139,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
       await form.save();
 
       // Save to sells history
-      const total = form.products.reduce((sum, p) => sum + (p.price * p.quantity), 0);
+      const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
       const sell = new Sell({
         phone: form.phone,
         name: form.name,
@@ -146,7 +159,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
   }
 });
 
-// API to get sells history (used in sells.html)
+// API to get sells history (used in sells.html and products.html for sales history)
 app.get('/sells', async (req, res) => {
   try {
     const sells = await Sell.find();
@@ -164,6 +177,63 @@ app.get('/shopping/:phone', async (req, res) => {
     res.json(sells);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving shopping history: ' + err.message });
+  }
+});
+
+// API to get all products (used in products.html and details.html)
+app.get('/products', async (req, res) => {
+  try {
+    const products = await Product.find();
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: 'Error retrieving products: ' + err.message });
+  }
+});
+
+// API to create a new product (used in products.html)
+app.post('/products', async (req, res) => {
+  const { brandName, productName, size, mrp } = req.body;
+  try {
+    const product = new Product({ brandName, productName, size, mrp });
+    await product.save();
+    res.status(201).json(product);
+  } catch (err) {
+    res.status(500).json({ error: 'Error creating product: ' + err.message });
+  }
+});
+
+// API to update a product (used in products.html)
+app.put('/products/:id', async (req, res) => {
+  const { id } = req.params;
+  const { brandName, productName, size, mrp } = req.body;
+  try {
+    const product = await Product.findByIdAndUpdate(
+      id,
+      { brandName, productName, size, mrp },
+      { new: true }
+    );
+    if (product) {
+      res.json(product);
+    } else {
+      res.status(404).json({ error: 'Product not found' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Error updating product: ' + err.message });
+  }
+});
+
+// API to delete a product (used in products.html)
+app.delete('/products/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const product = await Product.findByIdAndDelete(id);
+    if (product) {
+      res.json({ message: 'Product deleted' });
+    } else {
+      res.status(404).json({ error: 'Product not found' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Error deleting product: ' + err.message });
   }
 });
 
