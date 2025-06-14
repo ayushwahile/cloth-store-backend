@@ -56,6 +56,14 @@ const productSchema = new mongoose.Schema({
 
 const Product = mongoose.model('Product', productSchema);
 
+// Schema for Owner's Bank Balance (added for bank_payment.html)
+const ownerBalanceSchema = new mongoose.Schema({
+  ownerId: { type: String, required: true, unique: true }, // For simplicity, use a fixed ownerId
+  balance: { type: Number, default: 0 }
+});
+
+const OwnerBalance = mongoose.model('OwnerBalance', ownerBalanceSchema);
+
 // API to create or update a form (used in form.html and details.html)
 app.post('/forms', async (req, res) => {
   const { phone, name, date, products } = req.body;
@@ -234,6 +242,38 @@ app.delete('/products/:id', async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: 'Error deleting product: ' + err.message });
+  }
+});
+
+// API to get owner's bank balance (added for bank_payment.html)
+app.get('/owner-balance', async (req, res) => {
+  try {
+    const ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    if (ownerBalance) {
+      res.json({ balance: ownerBalance.balance });
+    } else {
+      const newBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+      await newBalance.save();
+      res.json({ balance: 0 });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Error retrieving balance: ' + err.message });
+  }
+});
+
+// API to update owner's bank balance (added for bank_payment.html)
+app.put('/owner-balance', async (req, res) => {
+  const { amount } = req.body;
+  try {
+    let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    if (!ownerBalance) {
+      ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+    }
+    ownerBalance.balance += amount;
+    await ownerBalance.save();
+    res.json({ balance: ownerBalance.balance });
+  } catch (err) {
+    res.status(500).json({ error: 'Error updating balance: ' + err.message });
   }
 });
 
