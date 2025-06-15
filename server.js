@@ -135,7 +135,7 @@ app.post('/forms', async (req, res) => {
   }
 });
 
-// API to get all forms (used in search.html and search_.html)
+// API to get all forms (used in search.html, search_.html, and owner_home.html)
 app.get('/forms', async (req, res) => {
   try {
     const fields = req.query.fields; // Check for fields query parameter
@@ -191,11 +191,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
   try {
     const form = await Form.findOne({ phone });
     if (form) {
-      form.paid = true;
-      form.paymentDate = paymentDate; // Save the payment date
-      await form.save();
-
-      // Save to sells history
+      // Save to sells history before deleting the form
       const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
       const sell = new Sell({
         phone: form.phone,
@@ -221,7 +217,10 @@ app.put('/forms/:phone/paid', async (req, res) => {
       ownerBalance.balance += total;
       await ownerBalance.save();
 
-      res.json(form);
+      // Delete the form from the forms collection
+      await Form.deleteOne({ phone });
+
+      res.json({ message: 'Form marked as paid and deleted', phone });
     } else {
       res.status(404).json({ error: 'Form not found' });
     }
@@ -426,7 +425,7 @@ app.put('/pending-payments/pay', async (req, res) => {
       res.status(404).json({ error: 'Pending payment not found or already paid' });
     }
   } catch (err) {
-    res.status(500).json({ error: 'Error marking payment as paid: ' + err.message });
+    res.status(500).json({ error: "Error marking payment as paid: " + err.message });
   }
 });
 
