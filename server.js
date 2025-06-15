@@ -196,7 +196,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
 // API to get sells history (used in sells.html and products.html for sales history)
 app.get('/sells', async (req, res) => {
   try {
-    const sells = await Sell.find();
+    const sells = await Sell.find().sort({ paymentDate: -1 }); // Sort by paymentDate in descending order (newest first)
     res.json(sells);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving sells: ' + err.message });
@@ -207,7 +207,7 @@ app.get('/sells', async (req, res) => {
 app.get('/shopping/:phone', async (req, res) => {
   const { phone } = req.params;
   try {
-    const sells = await Sell.find({ phone });
+    const sells = await Sell.find({ phone }).sort({ paymentDate: -1 }); // Sort by paymentDate in descending order
     res.json(sells);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving shopping history: ' + err.message });
