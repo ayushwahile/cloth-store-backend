@@ -8,7 +8,44 @@ app.use(cors()); // Allows your website to connect to the backend
 
 // Connect to MongoDB
 mongoose.connect('mongodb+srv://wahileayush:wahileayush0506@ayushcluster.el3krdl.mongodb.net/clothstore?retryWrites=true&w=majority&appName=AyushCluster')
-  .then(() => console.log('Connected to MongoDB'))
+  .then(async () => {
+    console.log('Connected to MongoDB');
+
+    // Ensure unique index on the phone field in the forms collection
+    try {
+      await mongoose.connection.db.collection('forms').createIndex(
+        { phone: 1 },
+        { unique: true }
+      );
+      console.log('Unique index on phone field ensured in forms collection');
+    } catch (err) {
+      console.error('Error creating unique index on phone field:', err);
+    }
+
+    // Clean up duplicate phone numbers in the forms collection (one-time operation)
+    try {
+      const duplicates = await mongoose.connection.db.collection('forms').aggregate([
+        { $group: { _id: "$phone", ids: { $addToSet: "$_id" }, count: { $sum: 1 } } },
+        { $match: { count: { $gt: 1 } } }
+      ]).toArray();
+
+      if (duplicates.length > 0) {
+        console.log(`Found ${duplicates.length} phone numbers with duplicates. Cleaning up...`);
+        for (const duplicate of duplicates) {
+          const idsToRemove = duplicate.ids.slice(1); // Keep the first document, remove the rest
+          await mongoose.connection.db.collection('forms').deleteMany({
+            _id: { $in: idsToRemove }
+          });
+          console.log(`Removed duplicates for phone: ${duplicate._id}`);
+        }
+        console.log('Duplicate cleanup completed');
+      } else {
+        console.log('No duplicate phone numbers found in forms collection');
+      }
+    } catch (err) {
+      console.error('Error cleaning up duplicates in forms collection:', err);
+    }
+  })
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Schema for Forms (created in form.html, shown in details.html)
@@ -154,6 +191,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
   try {
     const form = await Form.findOne({ phone });
     if (form) {
+      console.log('Received paymentDate:', paymentDate);
       form.paid = true;
       form.paymentDate = paymentDate; // Save the payment date
       await form.save();
@@ -175,6 +213,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
         paymentDate: new Date(paymentDate) // Convert string to Date
       });
       await sell.save();
+      console.log('Saved sell with paymentDate:', sell.paymentDate);
 
       // Update owner's bank balance
       let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
@@ -197,6 +236,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
 app.get('/sells', async (req, res) => {
   try {
     const sells = await Sell.find().sort({ paymentDate: -1 }); // Sort by paymentDate in descending order (newest first)
+    console.log('Fetched sells:', sells.map(sell => ({ phone: sell.phone, paymentDate: sell.paymentDate })));
     res.json(sells);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving sells: ' + err.message });
