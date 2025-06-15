@@ -43,7 +43,7 @@ const sellSchema = new mongoose.Schema({
     mrp: Number,
     selectedFloor: String // Added to match formSchema and store selectedFloor
   }],
-  paymentDate: { type: String, required: true }
+  paymentDate: { type: Date, required: true } // Changed to Date for proper sorting
 });
 
 const Sell = mongoose.model('Sell', sellSchema);
@@ -170,9 +170,9 @@ app.put('/forms/:phone/paid', async (req, res) => {
           productName: product.productName,
           size: product.size,
           mrp: product.mrp,
-          selectedFloor: product.selectedFloor || '' // Explicitly include selectedFloor
+          selectedFloor: product.selectedFloor || ''
         })),
-        paymentDate
+        paymentDate: new Date(paymentDate) // Convert string to Date
       });
       await sell.save();
 
