@@ -8,44 +8,7 @@ app.use(cors()); // Allows your website to connect to the backend
 
 // Connect to MongoDB
 mongoose.connect('mongodb+srv://wahileayush:wahileayush0506@ayushcluster.el3krdl.mongodb.net/clothstore?retryWrites=true&w=majority&appName=AyushCluster')
-  .then(async () => {
-    console.log('Connected to MongoDB');
-
-    // Ensure unique index on the phone field in the forms collection
-    try {
-      await mongoose.connection.db.collection('forms').createIndex(
-        { phone: 1 },
-        { unique: true }
-      );
-      console.log('Unique index on phone field ensured in forms collection');
-    } catch (err) {
-      console.error('Error creating unique index on phone field:', err);
-    }
-
-    // Clean up duplicate phone numbers in the forms collection (one-time operation)
-    try {
-      const duplicates = await mongoose.connection.db.collection('forms').aggregate([
-        { $group: { _id: "$phone", ids: { $addToSet: "$_id" }, count: { $sum: 1 } } },
-        { $match: { count: { $gt: 1 } } }
-      ]).toArray();
-
-      if (duplicates.length > 0) {
-        console.log(`Found ${duplicates.length} phone numbers with duplicates. Cleaning up...`);
-        for (const duplicate of duplicates) {
-          const idsToRemove = duplicate.ids.slice(1); // Keep the first document, remove the rest
-          await mongoose.connection.db.collection('forms').deleteMany({
-            _id: { $in: idsToRemove }
-          });
-          console.log(`Removed duplicates for phone: ${duplicate._id}`);
-        }
-        console.log('Duplicate cleanup completed');
-      } else {
-        console.log('No duplicate phone numbers found in forms collection');
-      }
-    } catch (err) {
-      console.error('Error cleaning up duplicates in forms collection:', err);
-    }
-  })
+  .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Schema for Forms (created in form.html, shown in details.html)
@@ -135,7 +98,7 @@ app.post('/forms', async (req, res) => {
   }
 });
 
-// API to get all forms (used in search.html, search_.html, and owner_home.html)
+// API to get all forms (used in search.html and search_.html)
 app.get('/forms', async (req, res) => {
   try {
     const fields = req.query.fields; // Check for fields query parameter
@@ -191,7 +154,11 @@ app.put('/forms/:phone/paid', async (req, res) => {
   try {
     const form = await Form.findOne({ phone });
     if (form) {
-      // Save to sells history before deleting the form
+      form.paid = true;
+      form.paymentDate = paymentDate; // Save the payment date
+      await form.save();
+
+      // Save to sells history
       const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
       const sell = new Sell({
         phone: form.phone,
@@ -217,10 +184,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
       ownerBalance.balance += total;
       await ownerBalance.save();
 
-      // Delete the form from the forms collection
-      await Form.deleteOne({ phone });
-
-      res.json({ message: 'Form marked as paid and deleted', phone });
+      res.json(form);
     } else {
       res.status(404).json({ error: 'Form not found' });
     }
@@ -425,7 +389,7 @@ app.put('/pending-payments/pay', async (req, res) => {
       res.status(404).json({ error: 'Pending payment not found or already paid' });
     }
   } catch (err) {
-    res.status(500).json({ error: "Error marking payment as paid: " + err.message });
+    res.status(500).json({ error: 'Error marking payment as paid: ' + err.message });
   }
 });
 
