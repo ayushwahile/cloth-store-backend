@@ -24,7 +24,8 @@ const formSchema = new mongoose.Schema({
     selectedFloor: String,
     checked: { type: Boolean, default: false } // For border change in details.html
   }],
-  paid: { type: Boolean, default: false } // For payment status
+  paid: { type: Boolean, default: false }, // For payment status
+  paymentDate: String // Added to store payment date
 });
 
 const Form = mongoose.model('Form', formSchema);
@@ -39,7 +40,8 @@ const sellSchema = new mongoose.Schema({
     brandName: String,
     productName: String,
     size: String,
-    mrp: Number
+    mrp: Number,
+    selectedFloor: String // Added to match formSchema and store selectedFloor
   }],
   paymentDate: { type: String, required: true }
 });
@@ -148,11 +150,12 @@ app.put('/forms/:phone/check-product', async (req, res) => {
 // API to mark form as paid (used in bank_payment.html)
 app.put('/forms/:phone/paid', async (req, res) => {
   const { phone } = req.params;
-  const { paymentDate } = req.body;
+  const { paymentDate, products } = req.body; // Include products from the request
   try {
     const form = await Form.findOne({ phone });
     if (form) {
       form.paid = true;
+      form.paymentDate = paymentDate; // Save the payment date
       await form.save();
 
       // Save to sells history
@@ -162,7 +165,13 @@ app.put('/forms/:phone/paid', async (req, res) => {
         name: form.name,
         date: form.date,
         total,
-        products: form.products,
+        products: form.products.map(product => ({
+          brandName: product.brandName,
+          productName: product.productName,
+          size: product.size,
+          mrp: product.mrp,
+          selectedFloor: product.selectedFloor || '' // Explicitly include selectedFloor
+        })),
         paymentDate
       });
       await sell.save();
