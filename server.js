@@ -1,13 +1,13 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const axios = require('axios'); // Added for Fast2SMS API
-require('dotenv').config(); // Added to load environment variables
+const axios = require('axios');
+require('dotenv').config();
 
 const app = express();
 
 app.use(express.json());
-app.use(cors()); // Allows your website to connect to the backend
+app.use(cors());
 
 // Hardcode the owner's phone number
 const OWNER_PHONE_NUMBER = "7276099625";
@@ -59,7 +59,7 @@ mongoose.connect('mongodb+srv://wahileayush:wahileayush0506@ayushcluster.el3krdl
 
 // Schema for Forms (created in form.html, shown in details.html)
 const formSchema = new mongoose.Schema({
-  phone: { type: String, required: true, unique: true }, // 10-digit phone number
+  phone: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   date: { type: String, required: true },
   products: [{
@@ -68,10 +68,10 @@ const formSchema = new mongoose.Schema({
     size: String,
     mrp: Number,
     selectedFloor: String,
-    checked: { type: Boolean, default: false } // For border change in details.html
+    checked: { type: Boolean, default: false }
   }],
-  paid: { type: Boolean, default: false }, // For payment status
-  paymentDate: String // Added to store payment date
+  paid: { type: Boolean, default: false },
+  paymentDate: String
 });
 
 const Form = mongoose.model('Form', formSchema);
@@ -87,9 +87,9 @@ const sellSchema = new mongoose.Schema({
     productName: String,
     size: String,
     mrp: Number,
-    selectedFloor: String // Added to match formSchema and store selectedFloor
+    selectedFloor: String
   }],
-  paymentDate: { type: Date, required: true } // Changed to Date for proper sorting
+  paymentDate: { type: Date, required: true }
 });
 
 const Sell = mongoose.model('Sell', sellSchema);
@@ -99,15 +99,15 @@ const productSchema = new mongoose.Schema({
   brandName: { type: String, required: true },
   productName: { type: String, required: true },
   size: { type: String, required: true },
-  originalMrp: { type: Number, required: true }, // Store the original MRP entered by the owner
-  adjustedMrp: { type: Number, required: true }  // Store the adjusted MRP (original + 10)
+  originalMrp: { type: Number, required: true },
+  adjustedMrp: { type: Number, required: true }
 });
 
 const Product = mongoose.model('Product', productSchema);
 
 // Schema for Owner's Bank Balance (added for bank_payment.html)
 const ownerBalanceSchema = new mongoose.Schema({
-  ownerId: { type: String, required: true, unique: true }, // For simplicity, use a fixed ownerId
+  ownerId: { type: String, required: true, unique: true },
   balance: { type: Number, default: 0 }
 });
 
@@ -127,7 +127,7 @@ const otpSessionSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   otp: { type: String, required: true },
   createdAt: { type: Date, required: true, default: Date.now },
-  expiresAt: { type: Date, required: true }, // Store expiration timestamp
+  expiresAt: { type: Date, required: true },
   verified: { type: Boolean, default: false }
 });
 
@@ -139,14 +139,12 @@ app.post('/forms', async (req, res) => {
   try {
     let form = await Form.findOne({ phone });
     if (form) {
-      // Update existing form (e.g., add products)
       if (products) {
         form.products = [...form.products, ...products];
       }
       await form.save();
       res.json(form);
     } else {
-      // Create new form
       form = new Form({ phone, name, date, products: products || [] });
       await form.save();
       res.status(201).json(form);
@@ -159,12 +157,12 @@ app.post('/forms', async (req, res) => {
 // API to get all forms (used in search.html and search_.html)
 app.get('/forms', async (req, res) => {
   try {
-    const fields = req.query.fields; // Check for fields query parameter
+    const fields = req.query.fields;
     let forms;
     if (fields === 'phone') {
-      forms = await Form.find({}, 'phone'); // Only fetch phone numbers
+      forms = await Form.find({}, 'phone');
     } else {
-      forms = await Form.find(); // Fetch full form data
+      forms = await Form.find();
     }
     res.json(forms);
   } catch (err) {
@@ -208,16 +206,15 @@ app.put('/forms/:phone/check-product', async (req, res) => {
 // API to mark form as paid (used in bank_payment.html)
 app.put('/forms/:phone/paid', async (req, res) => {
   const { phone } = req.params;
-  const { paymentDate, products } = req.body; // Include products from the request
+  const { paymentDate, products } = req.body;
   try {
     const form = await Form.findOne({ phone });
     if (form) {
       console.log('Received paymentDate:', paymentDate);
       form.paid = true;
-      form.paymentDate = paymentDate; // Save the payment date
+      form.paymentDate = paymentDate;
       await form.save();
 
-      // Save to sells history
       const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
       const sell = new Sell({
         phone: form.phone,
@@ -231,12 +228,11 @@ app.put('/forms/:phone/paid', async (req, res) => {
           mrp: product.mrp,
           selectedFloor: product.selectedFloor || ''
         })),
-        paymentDate: new Date(paymentDate) // Convert string to Date
+        paymentDate: new Date(paymentDate)
       });
       await sell.save();
       console.log('Saved sell with paymentDate:', sell.paymentDate);
 
-      // Update owner's bank balance
       let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
       if (!ownerBalance) {
         ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
@@ -256,7 +252,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
 // API to get sells history (used in sells.html and products.html for sales history)
 app.get('/sells', async (req, res) => {
   try {
-    const sells = await Sell.find().sort({ paymentDate: -1 }); // Sort by paymentDate in descending order (newest first)
+    const sells = await Sell.find().sort({ paymentDate: -1 });
     console.log('Fetched sells:', sells.map(sell => ({ phone: sell.phone, paymentDate: sell.paymentDate })));
     res.json(sells);
   } catch (err) {
@@ -268,7 +264,7 @@ app.get('/sells', async (req, res) => {
 app.get('/shopping/:phone', async (req, res) => {
   const { phone } = req.params;
   try {
-    const sells = await Sell.find({ phone }).sort({ paymentDate: -1 }); // Sort by paymentDate in descending order
+    const sells = await Sell.find({ phone }).sort({ paymentDate: -1 });
     res.json(sells);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving shopping history: ' + err.message });
@@ -279,10 +275,9 @@ app.get('/shopping/:phone', async (req, res) => {
 app.get('/products', async (req, res) => {
   try {
     const products = await Product.find();
-    // Map products to maintain backward compatibility with existing code expecting 'mrp'
     const formattedProducts = products.map(product => ({
       ...product._doc,
-      mrp: product.adjustedMrp // Add mrp field for backward compatibility
+      mrp: product.adjustedMrp
     }));
     res.json(formattedProducts);
   } catch (err) {
@@ -295,11 +290,10 @@ app.post('/products', async (req, res) => {
   const { brandName, productName, size, mrp } = req.body;
   try {
     const originalMrp = Number(mrp);
-    const adjustedMrp = originalMrp + 10; // Add 10 Rs to the MRP for the additional fee
+    const adjustedMrp = originalMrp + 10;
     console.log(`Creating product with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp}`);
     const product = new Product({ brandName, productName, size, originalMrp, adjustedMrp });
     await product.save();
-    // Add mrp field to response for backward compatibility
     res.status(201).json({ ...product._doc, mrp: adjustedMrp });
   } catch (err) {
     res.status(500).json({ error: 'Error creating product: ' + err.message });
@@ -312,7 +306,7 @@ app.put('/products/:id', async (req, res) => {
   const { brandName, productName, size, mrp } = req.body;
   try {
     const originalMrp = Number(mrp);
-    const adjustedMrp = originalMrp + 10; // Add 10 Rs to the MRP for the additional fee
+    const adjustedMrp = originalMrp + 10;
     console.log(`Updating product ID: ${id} with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp}`);
     const product = await Product.findByIdAndUpdate(
       id,
@@ -320,7 +314,6 @@ app.put('/products/:id', async (req, res) => {
       { new: true }
     );
     if (product) {
-      // Add mrp field to response for backward compatibility
       res.json({ ...product._doc, mrp: adjustedMrp });
     } else {
       res.status(404).json({ error: 'Product not found' });
@@ -427,12 +420,12 @@ app.post('/pending-payments', async (req, res) => {
 app.get('/pending-payments/most-recent', async (req, res) => {
   try {
     const pendingPayment = await PendingPayment.findOne({ paid: false })
-      .sort({ timestamp: -1 }); // Sort by timestamp in descending order (most recent first)
+      .sort({ timestamp: -1 });
     if (pendingPayment) {
       console.log('Fetched most recent unpaid pending payment:', pendingPayment);
       res.json(pendingPayment);
     } else {
-      res.json(null); // Return null if no unpaid pending payments exist
+      res.json(null);
     }
   } catch (err) {
     console.error('Error retrieving most recent pending payment:', err);
@@ -446,7 +439,7 @@ app.get('/pending-payments/previous-day', async (req, res) => {
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
-    const yesterdayStart = yesterday.toISOString().split('T')[0]; // e.g., "2025-06-15"
+    const yesterdayStart = yesterday.toISOString().split('T')[0];
 
     const pendingPayments = await PendingPayment.find({
       timestamp: { $gte: `${yesterdayStart}T00:00:00.000Z`, $lt: `${yesterdayStart}T23:59:59.999Z` },
@@ -463,7 +456,7 @@ app.get('/pending-payments/previous-day', async (req, res) => {
 
 // API to get pending payments for a specific date
 app.get('/pending-payments', async (req, res) => {
-  const { date } = req.query; // Expect date in format "YYYY-MM-DD" (e.g., "2025-06-16")
+  const { date } = req.query;
   try {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid or missing date parameter. Use format YYYY-MM-DD' });
@@ -495,7 +488,6 @@ app.put('/pending-payments/pay', async (req, res) => {
       { new: true }
     );
     if (pendingPayment) {
-      // Update owner's bank balance for pending payment
       let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
       if (!ownerBalance) {
         ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
@@ -517,7 +509,7 @@ app.put('/pending-payments/pay', async (req, res) => {
 
 // API to mark all pending payments for a specific date as paid
 app.put('/pending-payments/pay-by-date', async (req, res) => {
-  const { date } = req.body; // Expect date in format "YYYY-MM-DD" (e.g., "2025-06-16")
+  const { date } = req.body;
   try {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid or missing date parameter. Use format YYYY-MM-DD' });
@@ -526,7 +518,6 @@ app.put('/pending-payments/pay-by-date', async (req, res) => {
     const startOfDay = `${date}T00:00:00.000Z`;
     const endOfDay = `${date}T23:59:59.999Z`;
 
-    // Find all unpaid pending payments for the specified date
     const pendingPayments = await PendingPayment.find({
       timestamp: { $gte: startOfDay, $lte: endOfDay },
       paid: false
@@ -537,10 +528,8 @@ app.put('/pending-payments/pay-by-date', async (req, res) => {
       return res.status(404).json({ error: 'No unpaid pending payments found for the specified date' });
     }
 
-    // Calculate the total amount
     const totalAmount = pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
-    // Mark all payments as paid
     await PendingPayment.updateMany(
       {
         timestamp: { $gte: startOfDay, $lte: endOfDay },
@@ -549,7 +538,6 @@ app.put('/pending-payments/pay-by-date', async (req, res) => {
       { paid: true }
     );
 
-    // Update owner's bank balance with the total amount
     let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
     if (!ownerBalance) {
       ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
@@ -567,11 +555,14 @@ app.put('/pending-payments/pay-by-date', async (req, res) => {
 
 // API to send OTP for owner (used in owner.html, restricted to OWNER_PHONE_NUMBER)
 app.post('/send-otp', async (req, res) => {
+  console.log('Received request body:', req.body); // Debug log
   const { phone } = req.body;
+  console.log('Extracted phone:', phone, 'Type:', typeof phone); // Debug log
+
   try {
     // Validate phone number
-    if (!phone || phone.length !== 10) {
-      return res.status(400).json({ error: 'Invalid phone number. Must be 10 digits.' });
+    if (!phone || typeof phone !== 'string' || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit string.' });
     }
 
     // Check if phone matches the owner's phone number
@@ -605,6 +596,7 @@ app.post('/send-otp', async (req, res) => {
       }
     );
 
+    console.log('Fast2SMS response:', fast2smsResponse.data); // Debug log
     if (fast2smsResponse.data.return !== true) {
       return res.status(500).json({ error: 'Failed to send OTP via SMS.' });
     }
@@ -628,11 +620,14 @@ app.post('/send-otp', async (req, res) => {
 
 // API to send OTP for form creation (used in search.html and shopping.html, allows any 10-digit phone number)
 app.post('/send-otp-form', async (req, res) => {
+  console.log('Received request body for send-otp-form:', req.body); // Debug log
   const { phone } = req.body;
+  console.log('Extracted phone for send-otp-form:', phone, 'Type:', typeof phone); // Debug log
+
   try {
     // Validate phone number
-    if (!phone || phone.length !== 10) {
-      return res.status(400).json({ error: 'Invalid phone number. Must be 10 digits.' });
+    if (!phone || typeof phone !== 'string' || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit string.' });
     }
 
     // Generate a 6-digit OTP
@@ -661,6 +656,7 @@ app.post('/send-otp-form', async (req, res) => {
       }
     );
 
+    console.log('Fast2SMS response for send-otp-form:', fast2smsResponse.data); // Debug log
     if (fast2smsResponse.data.return !== true) {
       return res.status(500).json({ error: 'Failed to send OTP via SMS.' });
     }
@@ -684,7 +680,10 @@ app.post('/send-otp-form', async (req, res) => {
 
 // API to verify OTP (used in owner.html, search.html, and shopping.html)
 app.post('/verify-otp', async (req, res) => {
+  console.log('Received request body for verify-otp:', req.body); // Debug log
   const { phone, otp } = req.body;
+  console.log('Extracted phone for verify-otp:', phone, 'Type:', typeof phone); // Debug log
+
   try {
     // Validate inputs
     if (!phone || !otp) {
