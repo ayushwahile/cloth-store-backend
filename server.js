@@ -441,7 +441,31 @@ app.get('/pending-payments/previous-day', async (req, res) => {
   }
 });
 
-// API to mark pending payments as paid
+// API to get pending payments for a specific date
+app.get('/pending-payments', async (req, res) => {
+  const { date } = req.query; // Expect date in format "YYYY-MM-DD" (e.g., "2025-06-16")
+  try {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Invalid or missing date parameter. Use format YYYY-MM-DD' });
+    }
+
+    const startOfDay = `${date}T00:00:00.000Z`;
+    const endOfDay = `${date}T23:59:59.999Z`;
+
+    const pendingPayments = await PendingPayment.find({
+      timestamp: { $gte: startOfDay, $lte: endOfDay },
+      paid: false
+    });
+
+    console.log(`Fetched pending payments for ${date}:`, pendingPayments);
+    res.json(pendingPayments);
+  } catch (err) {
+    console.error(`Error retrieving pending payments for ${date}:`, err);
+    res.status(500).json({ error: 'Error retrieving pending payments: ' + err.message });
+  }
+});
+
+// API to mark a single pending payment as paid
 app.put('/pending-payments/pay', async (req, res) => {
   const { timestamp } = req.body;
   try {
@@ -468,6 +492,56 @@ app.put('/pending-payments/pay', async (req, res) => {
   } catch (err) {
     console.error('Error marking payment as paid:', err);
     res.status(500).json({ error: 'Error marking payment as paid: ' + err.message });
+  }
+});
+
+// API to mark all pending payments for a specific date as paid
+app.put('/pending-payments/pay-by-date', async (req, res) => {
+  const { date } = req.body; // Expect date in format "YYYY-MM-DD" (e.g., "2025-06-16")
+  try {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Invalid or missing date parameter. Use format YYYY-MM-DD' });
+    }
+
+    const startOfDay = `${date}T00:00:00.000Z`;
+    const endOfDay = `${date}T23:59:59.999Z`;
+
+    // Find all unpaid pending payments for the specified date
+    const pendingPayments = await PendingPayment.find({
+      timestamp: { $gte: startOfDay, $lte: endOfDay },
+      paid: false
+    });
+
+    if (pendingPayments.length === 0) {
+      console.warn(`No unpaid pending payments found for ${date}`);
+      return res.status(404).json({ error: 'No unpaid pending payments found for the specified date' });
+    }
+
+    // Calculate the total amount
+    const totalAmount = pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
+
+    // Mark all payments as paid
+    await PendingPayment.updateMany(
+      {
+        timestamp: { $gte: startOfDay, $lte: endOfDay },
+        paid: false
+      },
+      { paid: true }
+    );
+
+    // Update owner's bank balance with the total amount
+    let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    if (!ownerBalance) {
+      ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+    }
+    ownerBalance.balance += totalAmount;
+    await ownerBalance.save();
+
+    console.log(`Marked all pending payments as paid for ${date}: totalAmount=${totalAmount}, new owner balance=${ownerBalance.balance}`);
+    res.json({ message: `All pending payments for ${date} marked as paid`, totalAmount, balance: ownerBalance.balance });
+  } catch (err) {
+    console.error(`Error marking payments as paid for ${date}:`, err);
+    res.status(500).json({ error: 'Error marking payments as paid: ' + err.message });
   }
 });
 
