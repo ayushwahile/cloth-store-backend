@@ -116,7 +116,7 @@ const pendingPaymentSchema = new mongoose.Schema({
 
 const PendingPayment = mongoose.model('PendingPayment', pendingPaymentSchema);
 
-// Schema for OTP Sessions (used in owner.html)
+// Schema for OTP Sessions (used in owner.html and search.html)
 const otpSessionSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   otp: { type: String, required: true },
@@ -559,7 +559,7 @@ app.put('/pending-payments/pay-by-date', async (req, res) => {
   }
 });
 
-// API to send OTP (simulated for now)
+// API to send OTP for owner (used in owner.html, restricted to OWNER_PHONE_NUMBER)
 app.post('/send-otp', async (req, res) => {
   const { phone } = req.body;
   try {
@@ -601,7 +601,44 @@ app.post('/send-otp', async (req, res) => {
   }
 });
 
-// API to verify OTP
+// API to send OTP for form creation (used in search.html, allows any 10-digit phone number)
+app.post('/send-otp-form', async (req, res) => {
+  const { phone } = req.body;
+  try {
+    // Validate phone number
+    if (!phone || phone.length !== 10) {
+      return res.status(400).json({ error: 'Invalid phone number. Must be 10 digits.' });
+    }
+
+    // Generate a 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Calculate expiration time (5 minutes from now)
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + 5 * 60 * 1000); // 5 minutes
+
+    // Delete any existing OTP sessions for this phone number
+    await OTPSession.deleteMany({ phone });
+
+    // Save the OTP session
+    const otpSession = new OTPSession({
+      phone,
+      otp,
+      createdAt,
+      expiresAt,
+      verified: false
+    });
+    await otpSession.save();
+
+    console.log(`Generated OTP for form creation for ${phone}: ${otp}`); // Log for testing
+    res.status(200).json({ message: 'OTP generated successfully for form creation', otp }); // Return OTP for simulation
+  } catch (err) {
+    console.error('Error generating OTP for form creation:', err);
+    res.status(500).json({ error: 'Error generating OTP for form creation: ' + err.message });
+  }
+});
+
+// API to verify OTP (used in owner.html, can be reused for search.html later)
 app.post('/verify-otp', async (req, res) => {
   const { phone, otp } = req.body;
   try {
