@@ -6,6 +6,9 @@ const app = express();
 app.use(express.json());
 app.use(cors()); // Allows your website to connect to the backend
 
+// Hardcode the owner's phone number
+const OWNER_PHONE_NUMBER = "7276099625";
+
 // Connect to MongoDB
 mongoose.connect('mongodb+srv://wahileayush:wahileayush0506@ayushcluster.el3krdl.mongodb.net/clothstore?retryWrites=true&w=majority&appName=AyushCluster')
   .then(async () => {
@@ -112,6 +115,17 @@ const pendingPaymentSchema = new mongoose.Schema({
 });
 
 const PendingPayment = mongoose.model('PendingPayment', pendingPaymentSchema);
+
+// Schema for OTP Sessions (used in owner.html)
+const otpSessionSchema = new mongoose.Schema({
+  phone: { type: String, required: true },
+  otp: { type: String, required: true },
+  createdAt: { type: Date, required: true, default: Date.now },
+  expiresAt: { type: Date, required: true },
+  verified: { type: Boolean, default: false }
+});
+
+const OTPSession = mongoose.model('OTPSession', otpSessionSchema);
 
 // API to create or update a form (used in form.html and details.html)
 app.post('/forms', async (req, res) => {
@@ -542,6 +556,91 @@ app.put('/pending-payments/pay-by-date', async (req, res) => {
   } catch (err) {
     console.error(`Error marking payments as paid for ${date}:`, err);
     res.status(500).json({ error: 'Error marking payments as paid: ' + err.message });
+  }
+});
+
+// API to send OTP (simulated for now)
+app.post('/send-otp', async (req, res) => {
+  const { phone } = req.body;
+  try {
+    // Validate phone number
+    if (!phone || phone.length !== 10) {
+      return res.status(400).json({ error: 'Invalid phone number. Must be 10 digits.' });
+    }
+
+    // Check if phone matches the owner's phone number
+    if (phone !== OWNER_PHONE_NUMBER) {
+      return res.status(403).json({ error: 'Phone number does not match the owner\'s phone number.' });
+    }
+
+    // Generate a 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Calculate expiration time (5 minutes from now)
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + 5 * 60 * 1000); // 5 minutes
+
+    // Delete any existing OTP sessions for this phone number
+    await OTPSession.deleteMany({ phone });
+
+    // Save the OTP session
+    const otpSession = new OTPSession({
+      phone,
+      otp,
+      createdAt,
+      expiresAt,
+      verified: false
+    });
+    await otpSession.save();
+
+    console.log(`Generated OTP for ${phone}: ${otp}`); // Log for testing
+    res.status(200).json({ message: 'OTP generated successfully', otp }); // Return OTP for simulation
+  } catch (err) {
+    console.error('Error generating OTP:', err);
+    res.status(500).json({ error: 'Error generating OTP: ' + err.message });
+  }
+});
+
+// API to verify OTP
+app.post('/verify-otp', async (req, res) => {
+  const { phone, otp } = req.body;
+  try {
+    // Validate inputs
+    if (!phone || !otp) {
+      return res.status(400).json({ error: 'Phone number and OTP are required.' });
+    }
+
+    // Find the most recent OTP session for this phone number
+    const otpSession = await OTPSession.findOne({ phone }).sort({ createdAt: -1 });
+
+    if (!otpSession) {
+      return res.status(404).json({ error: 'No OTP session found for this phone number.' });
+    }
+
+    // Check if OTP has expired
+    const now = new Date();
+    if (now > otpSession.expiresAt) {
+      return res.status(400).json({ error: 'OTP has expired.' });
+    }
+
+    // Check if OTP has already been verified
+    if (otpSession.verified) {
+      return res.status(400).json({ error: 'OTP has already been used.' });
+    }
+
+    // Verify the OTP
+    if (otpSession.otp !== otp) {
+      return res.status(400).json({ error: 'Invalid OTP.' });
+    }
+
+    // Mark the OTP session as verified
+    otpSession.verified = true;
+    await otpSession.save();
+
+    res.status(200).json({ message: 'OTP verified successfully' });
+  } catch (err) {
+    console.error('Error verifying OTP:', err);
+    res.status(500).json({ error: 'Error verifying OTP: ' + err.message });
   }
 });
 
