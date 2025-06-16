@@ -90,7 +90,8 @@ const productSchema = new mongoose.Schema({
   brandName: { type: String, required: true },
   productName: { type: String, required: true },
   size: { type: String, required: true },
-  mrp: { type: Number, required: true }
+  originalMrp: { type: Number, required: true }, // Store the original MRP entered by the owner
+  adjustedMrp: { type: Number, required: true }  // Store the adjusted MRP (original + 10)
 });
 
 const Product = mongoose.model('Product', productSchema);
@@ -258,7 +259,12 @@ app.get('/shopping/:phone', async (req, res) => {
 app.get('/products', async (req, res) => {
   try {
     const products = await Product.find();
-    res.json(products);
+    // Map products to maintain backward compatibility with existing code expecting 'mrp'
+    const formattedProducts = products.map(product => ({
+      ...product._doc,
+      mrp: product.adjustedMrp // Add mrp field for backward compatibility
+    }));
+    res.json(formattedProducts);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving products: ' + err.message });
   }
@@ -268,11 +274,13 @@ app.get('/products', async (req, res) => {
 app.post('/products', async (req, res) => {
   const { brandName, productName, size, mrp } = req.body;
   try {
-    const adjustedMrp = Number(mrp) + 10; // Add 10 Rs to the MRP for the additional fee
-    console.log(`Creating product with original MRP: ${mrp}, adjusted MRP: ${adjustedMrp}`);
-    const product = new Product({ brandName, productName, size, mrp: adjustedMrp });
+    const originalMrp = Number(mrp);
+    const adjustedMrp = originalMrp + 10; // Add 10 Rs to the MRP for the additional fee
+    console.log(`Creating product with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp}`);
+    const product = new Product({ brandName, productName, size, originalMrp, adjustedMrp });
     await product.save();
-    res.status(201).json(product);
+    // Add mrp field to response for backward compatibility
+    res.status(201).json({ ...product._doc, mrp: adjustedMrp });
   } catch (err) {
     res.status(500).json({ error: 'Error creating product: ' + err.message });
   }
@@ -283,15 +291,17 @@ app.put('/products/:id', async (req, res) => {
   const { id } = req.params;
   const { brandName, productName, size, mrp } = req.body;
   try {
-    const adjustedMrp = Number(mrp) + 10; // Add 10 Rs to the MRP for the additional fee
-    console.log(`Updating product ID: ${id} with original MRP: ${mrp}, adjusted MRP: ${adjustedMrp}`);
+    const originalMrp = Number(mrp);
+    const adjustedMrp = originalMrp + 10; // Add 10 Rs to the MRP for the additional fee
+    console.log(`Updating product ID: ${id} with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp}`);
     const product = await Product.findByIdAndUpdate(
       id,
-      { brandName, productName, size, mrp: adjustedMrp },
+      { brandName, productName, size, originalMrp, adjustedMrp },
       { new: true }
     );
     if (product) {
-      res.json(product);
+      // Add mrp field to response for backward compatibility
+      res.json({ ...product._doc, mrp: adjustedMrp });
     } else {
       res.status(404).json({ error: 'Product not found' });
     }
