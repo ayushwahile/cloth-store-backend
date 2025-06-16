@@ -12,8 +12,8 @@ app.use(cors());
 // Hardcode the owner's phone number
 const OWNER_PHONE_NUMBER = "7276099625";
 
-// Load Fast2SMS API key from environment variables
-const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || 'aKklBHJUQmtUp0PBtEXPH9uSh02X1jQk8NQWkStZbTYFshkgqYu60VBqpkIt';
+// Load Fast2SMS API key from environment variables (updated with new API key)
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || 'luhR8YMdTxfkbrV3LQWwPvzqm14KBeE9XU25H0DyZGNi76nOFaXPf1MUxQBJIw5zCyRtFuTEk3gmoNn6';
 
 // Connect to MongoDB
 mongoose.connect('mongodb+srv://wahileayush:wahileayush0506@ayushcluster.el3krdl.mongodb.net/clothstore?retryWrites=true&w=majority&appName=AyushCluster')
@@ -555,13 +555,17 @@ app.put('/pending-payments/pay-by-date', async (req, res) => {
 
 // API to send OTP for owner (used in owner.html, restricted to OWNER_PHONE_NUMBER)
 app.post('/send-otp', async (req, res) => {
-  console.log('Received request body:', req.body); // Debug log
-  const { phone } = req.body;
-  console.log('Extracted phone:', phone, 'Type:', typeof phone); // Debug log
+  console.log('Received request body:', req.body);
+  let { phone } = req.body;
+  console.log('Extracted phone (before conversion):', phone, 'Type:', typeof phone);
+
+  // Convert phone to string if it's not already
+  phone = String(phone).trim();
+  console.log('Extracted phone (after conversion):', phone, 'Type:', typeof phone);
 
   try {
     // Validate phone number
-    if (!phone || typeof phone !== 'string' || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
+    if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
       return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit string.' });
     }
 
@@ -596,9 +600,9 @@ app.post('/send-otp', async (req, res) => {
       }
     );
 
-    console.log('Fast2SMS response:', fast2smsResponse.data); // Debug log
+    console.log('Fast2SMS response:', fast2smsResponse.data);
     if (fast2smsResponse.data.return !== true) {
-      return res.status(500).json({ error: 'Failed to send OTP via SMS.' });
+      return res.status(500).json({ error: 'Failed to send OTP via SMS: ' + (fast2smsResponse.data.message || 'Unknown error') });
     }
 
     // Save the OTP session
@@ -620,13 +624,17 @@ app.post('/send-otp', async (req, res) => {
 
 // API to send OTP for form creation (used in search.html and shopping.html, allows any 10-digit phone number)
 app.post('/send-otp-form', async (req, res) => {
-  console.log('Received request body for send-otp-form:', req.body); // Debug log
-  const { phone } = req.body;
-  console.log('Extracted phone for send-otp-form:', phone, 'Type:', typeof phone); // Debug log
+  console.log('Received request body for send-otp-form:', req.body);
+  let { phone } = req.body;
+  console.log('Extracted phone for send-otp-form (before conversion):', phone, 'Type:', typeof phone);
+
+  // Convert phone to string if it's not already
+  phone = String(phone).trim();
+  console.log('Extracted phone for send-otp-form (after conversion):', phone, 'Type:', typeof phone);
 
   try {
     // Validate phone number
-    if (!phone || typeof phone !== 'string' || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
+    if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
       return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit string.' });
     }
 
@@ -656,9 +664,9 @@ app.post('/send-otp-form', async (req, res) => {
       }
     );
 
-    console.log('Fast2SMS response for send-otp-form:', fast2smsResponse.data); // Debug log
+    console.log('Fast2SMS response for send-otp-form:', fast2smsResponse.data);
     if (fast2smsResponse.data.return !== true) {
-      return res.status(500).json({ error: 'Failed to send OTP via SMS.' });
+      return res.status(500).json({ error: 'Failed to send OTP via SMS: ' + (fast2smsResponse.data.message || 'Unknown error') });
     }
 
     // Save the OTP session
@@ -680,9 +688,13 @@ app.post('/send-otp-form', async (req, res) => {
 
 // API to verify OTP (used in owner.html, search.html, and shopping.html)
 app.post('/verify-otp', async (req, res) => {
-  console.log('Received request body for verify-otp:', req.body); // Debug log
-  const { phone, otp } = req.body;
-  console.log('Extracted phone for verify-otp:', phone, 'Type:', typeof phone); // Debug log
+  console.log('Received request body for verify-otp:', req.body);
+  let { phone, otp } = req.body;
+  console.log('Extracted phone for verify-otp (before conversion):', phone, 'Type:', typeof phone);
+
+  // Convert phone to string if it's not already
+  phone = String(phone).trim();
+  console.log('Extracted phone for verify-otp (after conversion):', phone, 'Type:', typeof phone);
 
   try {
     // Validate inputs
