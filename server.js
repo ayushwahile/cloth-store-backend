@@ -268,7 +268,9 @@ app.get('/products', async (req, res) => {
 app.post('/products', async (req, res) => {
   const { brandName, productName, size, mrp } = req.body;
   try {
-    const product = new Product({ brandName, productName, size, mrp });
+    const adjustedMrp = Number(mrp) + 10; // Add 10 Rs to the MRP for the additional fee
+    console.log(`Creating product with original MRP: ${mrp}, adjusted MRP: ${adjustedMrp}`);
+    const product = new Product({ brandName, productName, size, mrp: adjustedMrp });
     await product.save();
     res.status(201).json(product);
   } catch (err) {
@@ -281,9 +283,11 @@ app.put('/products/:id', async (req, res) => {
   const { id } = req.params;
   const { brandName, productName, size, mrp } = req.body;
   try {
+    const adjustedMrp = Number(mrp) + 10; // Add 10 Rs to the MRP for the additional fee
+    console.log(`Updating product ID: ${id} with original MRP: ${mrp}, adjusted MRP: ${adjustedMrp}`);
     const product = await Product.findByIdAndUpdate(
       id,
-      { brandName, productName, size, mrp },
+      { brandName, productName, size, mrp: adjustedMrp },
       { new: true }
     );
     if (product) {
@@ -381,27 +385,48 @@ app.post('/pending-payments', async (req, res) => {
   try {
     const pendingPayment = new PendingPayment({ amount, timestamp });
     await pendingPayment.save();
-    res.status(201).json({ message: 'Pending payment saved successfully' });
+    console.log(`Saved pending payment: amount=${amount}, timestamp=${timestamp}`);
+    res.status(201).json({ message: 'Pending payment saved successfully', timestamp });
   } catch (err) {
+    console.error('Error saving pending payment:', err);
     res.status(500).json({ error: 'Error saving pending payment: ' + err.message });
   }
 });
 
-// API to get pending payments for the previous day
+// API to get the most recent unpaid pending payment
+app.get('/pending-payments/most-recent', async (req, res) => {
+  try {
+    const pendingPayment = await PendingPayment.findOne({ paid: false })
+      .sort({ timestamp: -1 }); // Sort by timestamp in descending order (most recent first)
+    if (pendingPayment) {
+      console.log('Fetched most recent unpaid pending payment:', pendingPayment);
+      res.json(pendingPayment);
+    } else {
+      res.json(null); // Return null if no unpaid pending payments exist
+    }
+  } catch (err) {
+    console.error('Error retrieving most recent pending payment:', err);
+    res.status(500).json({ error: 'Error retrieving pending payment: ' + err.message });
+  }
+});
+
+// API to get pending payments for the previous day (kept for backward compatibility)
 app.get('/pending-payments/previous-day', async (req, res) => {
   try {
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
-    const yesterdayStart = yesterday.toISOString().split('T')[0]; // e.g., "2025-06-14"
+    const yesterdayStart = yesterday.toISOString().split('T')[0]; // e.g., "2025-06-15"
 
     const pendingPayments = await PendingPayment.find({
       timestamp: { $gte: `${yesterdayStart}T00:00:00.000Z`, $lt: `${yesterdayStart}T23:59:59.999Z` },
       paid: false
     });
 
+    console.log('Fetched previous day pending payments:', pendingPayments);
     res.json(pendingPayments);
   } catch (err) {
+    console.error('Error retrieving previous day pending payments:', err);
     res.status(500).json({ error: 'Error retrieving pending payments: ' + err.message });
   }
 });
@@ -424,11 +449,14 @@ app.put('/pending-payments/pay', async (req, res) => {
       ownerBalance.balance += pendingPayment.amount;
       await ownerBalance.save();
 
+      console.log(`Marked pending payment as paid: timestamp=${timestamp}, amount=${pendingPayment.amount}, new owner balance=${ownerBalance.balance}`);
       res.json({ message: 'Pending payment marked as paid', balance: ownerBalance.balance });
     } else {
+      console.warn(`Pending payment not found or already paid: timestamp=${timestamp}`);
       res.status(404).json({ error: 'Pending payment not found or already paid' });
     }
   } catch (err) {
+    console.error('Error marking payment as paid:', err);
     res.status(500).json({ error: 'Error marking payment as paid: ' + err.message });
   }
 });
