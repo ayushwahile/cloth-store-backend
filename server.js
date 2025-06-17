@@ -1,6 +1,8 @@
+require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const axios = require('axios'); // Import axios for making HTTP requests to Fast2SMS
 const app = express();
 
 app.use(express.json());
@@ -8,6 +10,9 @@ app.use(cors()); // Allows your website to connect to the backend
 
 // Hardcode the owner's phone number
 const OWNER_PHONE_NUMBER = "7276099625";
+
+// Load the Fast2SMS API key from environment variables
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY;
 
 // Connect to MongoDB
 mongoose.connect('mongodb+srv://wahileayush:wahileayush0506@ayushcluster.el3krdl.mongodb.net/clothstore?retryWrites=true&w=majority&appName=AyushCluster')
@@ -116,7 +121,7 @@ const pendingPaymentSchema = new mongoose.Schema({
 
 const PendingPayment = mongoose.model('PendingPayment', pendingPaymentSchema);
 
-// Schema for OTP Sessions (used in owner.html and search.html)
+// Schema for OTP Sessions (used in owner.html, search.html, and shopping.html)
 const otpSessionSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   otp: { type: String, required: true },
@@ -583,6 +588,26 @@ app.post('/send-otp', async (req, res) => {
     // Delete any existing OTP sessions for this phone number
     await OTPSession.deleteMany({ phone });
 
+    // Send OTP via Fast2SMS
+    const response = await axios.post(
+      'https://www.fast2sms.com/dev/bulkV2',
+      {
+        variables_values: otp,
+        route: 'otp',
+        numbers: phone,
+      },
+      {
+        headers: {
+          authorization: FAST2SMS_API_KEY,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (response.data.return !== true) {
+      return res.status(500).json({ error: 'Failed to send OTP via SMS.' });
+    }
+
     // Save the OTP session
     const otpSession = new OTPSession({
       phone,
@@ -593,15 +618,15 @@ app.post('/send-otp', async (req, res) => {
     });
     await otpSession.save();
 
-    console.log(`Generated OTP for ${phone}: ${otp}`); // Log for testing
-    res.status(200).json({ message: 'OTP generated successfully', otp }); // Return OTP for simulation
+    console.log(`OTP sent to ${phone}: ${otp}`); // Log for testing (remove in production)
+    res.status(200).json({ message: 'OTP sent successfully' });
   } catch (err) {
-    console.error('Error generating OTP:', err);
-    res.status(500).json({ error: 'Error generating OTP: ' + err.message });
+    console.error('Error sending OTP:', err);
+    res.status(500).json({ error: 'Error sending OTP: ' + err.message });
   }
 });
 
-// API to send OTP for form creation (used in search.html, allows any 10-digit phone number)
+// API to send OTP for form creation (used in search.html and shopping.html, allows any 10-digit phone number)
 app.post('/send-otp-form', async (req, res) => {
   const { phone } = req.body;
   try {
@@ -620,6 +645,26 @@ app.post('/send-otp-form', async (req, res) => {
     // Delete any existing OTP sessions for this phone number
     await OTPSession.deleteMany({ phone });
 
+    // Send OTP via Fast2SMS
+    const response = await axios.post(
+      'https://www.fast2sms.com/dev/bulkV2',
+      {
+        variables_values: otp,
+        route: 'otp',
+        numbers: phone,
+      },
+      {
+        headers: {
+          authorization: FAST2SMS_API_KEY,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (response.data.return !== true) {
+      return res.status(500).json({ error: 'Failed to send OTP via SMS.' });
+    }
+
     // Save the OTP session
     const otpSession = new OTPSession({
       phone,
@@ -630,15 +675,15 @@ app.post('/send-otp-form', async (req, res) => {
     });
     await otpSession.save();
 
-    console.log(`Generated OTP for form creation for ${phone}: ${otp}`); // Log for testing
-    res.status(200).json({ message: 'OTP generated successfully for form creation', otp }); // Return OTP for simulation
+    console.log(`OTP sent to ${phone}: ${otp}`); // Log for testing (remove in production)
+    res.status(200).json({ message: 'OTP sent successfully for form creation' });
   } catch (err) {
-    console.error('Error generating OTP for form creation:', err);
-    res.status(500).json({ error: 'Error generating OTP for form creation: ' + err.message });
+    console.error('Error sending OTP for form creation:', err);
+    res.status(500).json({ error: 'Error sending OTP for form creation: ' + err.message });
   }
 });
 
-// API to verify OTP (used in owner.html, can be reused for search.html later)
+// API to verify OTP (used in owner.html, search.html, and shopping.html)
 app.post('/verify-otp', async (req, res) => {
   const { phone, otp } = req.body;
   try {
