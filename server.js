@@ -244,6 +244,10 @@ app.put('/forms/:phone/paid', async (req, res) => {
       ownerBalance.balance += total;
       await ownerBalance.save();
 
+      // Delete the form from the forms collection after payment
+      await Form.deleteOne({ phone });
+      console.log(`Deleted form with phone number ${phone} after payment`);
+
       res.json(form);
     } else {
       res.status(404).json({ error: 'Form not found' });
