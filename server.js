@@ -13,7 +13,7 @@ app.use(cors()); // Allows your website to connect to the backend
 const OWNER_PHONE_NUMBER = "7276099625";
 
 // Load Fast2SMS API key from environment variables
-const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || 'aKklBHJUQmtUp0PBtEXPH9uSh02X1jQk8NQWkStZbTYFshkgqYu60VBqpkIt';
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || 'EkqoTCwPlzqCgY8escbyntH2wc9kwSOT33009jjrqWjRTJnsag8bQg726Wt4';
 
 // Connect to MongoDB
 mongoose.connect('mongodb+srv://wahileayush:wahileayush0506@ayushcluster.el3krdl.mongodb.net/clothstore?retryWrites=true&w=majority&appName=AyushCluster')
