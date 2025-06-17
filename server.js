@@ -211,48 +211,53 @@ app.put('/forms/:phone/paid', async (req, res) => {
   const { paymentDate, products } = req.body; // Include products from the request
   try {
     const form = await Form.findOne({ phone });
-    if (form) {
-      console.log('Received paymentDate:', paymentDate);
-      form.paid = true;
-      form.paymentDate = paymentDate; // Save the payment date
-      await form.save();
-
-      // Save to sells history
-      const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
-      const sell = new Sell({
-        phone: form.phone,
-        name: form.name,
-        date: form.date,
-        total,
-        products: form.products.map(product => ({
-          brandName: product.brandName,
-          productName: product.productName,
-          size: product.size,
-          mrp: product.mrp,
-          selectedFloor: product.selectedFloor || ''
-        })),
-        paymentDate: new Date(paymentDate) // Convert string to Date
-      });
-      await sell.save();
-      console.log('Saved sell with paymentDate:', sell.paymentDate);
-
-      // Update owner's bank balance
-      let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
-      if (!ownerBalance) {
-        ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
-      }
-      ownerBalance.balance += total;
-      await ownerBalance.save();
-
-      // Delete the form from the forms collection after payment
-      await Form.deleteOne({ phone });
-      console.log(`Deleted form with phone number ${phone} after payment`);
-
-      res.json(form);
-    } else {
-      res.status(404).json({ error: 'Form not found' });
+    if (!form) {
+      return res.status(404).json({ error: 'Form not found' });
     }
+
+    console.log('Received paymentDate:', paymentDate);
+    form.paid = true;
+    form.paymentDate = paymentDate; // Save the payment date
+    await form.save();
+
+    // Save to sells history
+    const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
+    const sell = new Sell({
+      phone: form.phone,
+      name: form.name,
+      date: form.date,
+      total,
+      products: form.products.map(product => ({
+        brandName: product.brandName,
+        productName: product.productName,
+        size: product.size,
+        mrp: product.mrp,
+        selectedFloor: product.selectedFloor || ''
+      })),
+      paymentDate: new Date(paymentDate) // Convert string to Date
+    });
+    await sell.save();
+    console.log('Saved sell with paymentDate:', sell.paymentDate);
+
+    // Update owner's bank balance
+    let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    if (!ownerBalance) {
+      ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+    }
+    ownerBalance.balance += total;
+    await ownerBalance.save();
+
+    // Delete the form from the forms collection after payment
+    const deleteResult = await Form.deleteOne({ phone });
+    if (deleteResult.deletedCount === 1) {
+      console.log(`Successfully deleted form with phone number ${phone} after payment`);
+    } else {
+      console.warn(`Form with phone number ${phone} was not found for deletion after payment`);
+    }
+
+    res.json(form);
   } catch (err) {
+    console.error('Error in marking form as paid:', err.message);
     res.status(500).json({ error: 'Error marking as paid: ' + err.message });
   }
 });
@@ -621,8 +626,11 @@ app.post('/send-otp', async (req, res) => {
     );
 
     if (response.data.return !== true) {
-      console.error('Fast2SMS Error:', response.data);
-      return res.status(500).json({ error: 'Failed to send OTP via SMS.' });
+      console.error('Fast2SMS Error Details:', response.data);
+      return res.status(500).json({ 
+        error: 'Failed to send OTP via SMS.', 
+        details: response.data.message || 'Unknown error from Fast2SMS'
+      });
     }
 
     console.log(`OTP sent to ${phone}: ${otp}`); // Log for debugging (remove in production)
@@ -680,8 +688,11 @@ app.post('/send-otp-form', async (req, res) => {
     );
 
     if (response.data.return !== true) {
-      console.error('Fast2SMS Error:', response.data);
-      return res.status(500).json({ error: 'Failed to send OTP via SMS.' });
+      console.error('Fast2SMS Error Details:', response.data);
+      return res.status(500).json({ 
+        error: 'Failed to send OTP via SMS.', 
+        details: response.data.message || 'Unknown error from Fast2SMS'
+      });
     }
 
     console.log(`OTP sent to ${phone}: ${otp}`); // Log for debugging (remove in production)
