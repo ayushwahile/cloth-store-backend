@@ -490,10 +490,22 @@ app.post('/payment-callback', async (req, res) => {
     ownerBalance.balance += total;
     await ownerBalance.save();
 
+    // Calculate and save pending payment (10 rupees per product)
+    const numProducts = form.products.length;
+    const pendingAmount = numProducts * 10;
+    const pendingPayment = new PendingPayment({
+      amount: pendingAmount,
+      timestamp: paymentDate,
+      paid: false
+    });
+    await pendingPayment.save();
+    console.log(`Saved pending payment: amount=${pendingAmount}, timestamp=${paymentDate}, phone=${phone}`);
+
+    // Delete the form from the forms collection after payment
     await Form.deleteOne({ phone });
 
-    // Redirect to pendingpayment.html with query parameters
-    const redirectUrl = `https://clothstoreayush.netlify.app/pendingpayment.html?phone=${phone}&payment_id=${razorpay_payment_id}`;
+    // Redirect to owner_home.html with phone and payment_id
+    const redirectUrl = `https://clothstoreayush.netlify.app/ownerButton/owner_home.html?phone=${phone}&payment_id=${razorpay_payment_id}`;
     res.redirect(302, redirectUrl);
   } catch (err) {
     console.error('Error in payment callback:', err.message);
@@ -501,38 +513,7 @@ app.post('/payment-callback', async (req, res) => {
   }
 });
 
-// API to save a pending payment
-app.post('/pending-payments', async (req, res) => {
-  const { amount, timestamp } = req.body;
-  try {
-    const pendingPayment = new PendingPayment({ amount, timestamp });
-    await pendingPayment.save();
-    console.log(`Saved pending payment: amount=${amount}, timestamp=${timestamp}`);
-    res.status(201).json({ message: 'Pending payment saved successfully', timestamp });
-  } catch (err) {
-    console.error('Error saving pending payment:', err);
-    res.status(500).json({ error: 'Error saving pending payment: ' + err.message });
-  }
-});
-
-// API to get the most recent unpaid pending payment
-app.get('/pending-payments/most-recent', async (req, res) => {
-  try {
-    const pendingPayment = await PendingPayment.findOne({ paid: false })
-      .sort({ timestamp: -1 }); // Sort by timestamp in descending order (most recent first)
-    if (pendingPayment) {
-      console.log('Fetched most recent unpaid pending payment:', pendingPayment);
-      res.json(pendingPayment);
-    } else {
-      res.json(null); // Return null if no unpaid pending payments exist
-    }
-  } catch (err) {
-    console.error('Error retrieving most recent pending payment:', err);
-    res.status(500).json({ error: 'Error retrieving pending payment: ' + err.message });
-  }
-});
-
-// API to get pending payments for the previous day (kept for backward compatibility)
+// API to get pending payments for the previous day (used in owner_home.html)
 app.get('/pending-payments/previous-day', async (req, res) => {
   try {
     const now = new Date();
@@ -549,30 +530,6 @@ app.get('/pending-payments/previous-day', async (req, res) => {
     res.json(pendingPayments);
   } catch (err) {
     console.error('Error retrieving previous day pending payments:', err);
-    res.status(500).json({ error: 'Error retrieving pending payments: ' + err.message });
-  }
-});
-
-// API to get pending payments for a specific date
-app.get('/pending-payments', async (req, res) => {
-  const { date } = req.query; // Expect date in format "YYYY-MM-DD" (e.g., "2025-06-16")
-  try {
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ error: 'Invalid or missing date parameter. Use format YYYY-MM-DD' });
-    }
-
-    const startOfDay = `${date}T00:00:00.000Z`;
-    const endOfDay = `${date}T23:59:59.999Z`;
-
-    const pendingPayments = await PendingPayment.find({
-      timestamp: { $gte: startOfDay, $lte: endOfDay },
-      paid: false
-    });
-
-    console.log(`Fetched pending payments for ${date}:`, pendingPayments);
-    res.json(pendingPayments);
-  } catch (err) {
-    console.error(`Error retrieving pending payments for ${date}:`, err);
     res.status(500).json({ error: 'Error retrieving pending payments: ' + err.message });
   }
 });
@@ -604,56 +561,6 @@ app.put('/pending-payments/pay', async (req, res) => {
   } catch (err) {
     console.error('Error marking payment as paid:', err);
     res.status(500).json({ error: 'Error marking payment as paid: ' + err.message });
-  }
-});
-
-// API to mark all pending payments for a specific date as paid
-app.put('/pending-payments/pay-by-date', async (req, res) => {
-  const { date } = req.body; // Expect date in format "YYYY-MM-DD" (e.g., "2025-06-16")
-  try {
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ error: 'Invalid or missing date parameter. Use format YYYY-MM-DD' });
-    }
-
-    const startOfDay = `${date}T00:00:00.000Z`;
-    const endOfDay = `${date}T23:59:59.999Z`;
-
-    // Find all unpaid pending payments for the specified date
-    const pendingPayments = await PendingPayment.find({
-      timestamp: { $gte: startOfDay, $lte: endOfDay },
-      paid: false
-    });
-
-    if (pendingPayments.length === 0) {
-      console.warn(`No unpaid pending payments found for ${date}`);
-      return res.status(404).json({ error: 'No unpaid pending payments found for the specified date' });
-    }
-
-    // Calculate the total amount
-    const totalAmount = pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
-
-    // Mark all payments as paid
-    await PendingPayment.updateMany(
-      {
-        timestamp: { $gte: startOfDay, $lte: endOfDay },
-        paid: false
-      },
-      { paid: true }
-    );
-
-    // Update owner's bank balance with the total amount
-    let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
-    if (!ownerBalance) {
-      ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
-    }
-    ownerBalance.balance += totalAmount;
-    await ownerBalance.save();
-
-    console.log(`Marked all pending payments as paid for ${date}: totalAmount=${totalAmount}, new owner balance=${ownerBalance.balance}`);
-    res.json({ message: `All pending payments for ${date} marked as paid`, totalAmount, balance: ownerBalance.balance });
-  } catch (err) {
-    console.error(`Error marking payments as paid for ${date}:`, err);
-    res.status(500).json({ error: 'Error marking payments as paid: ' + err.message });
   }
 });
 
