@@ -431,44 +431,51 @@ app.post('/verify-payment', async (req, res) => {
 
 // New API to handle payment callback from Razorpay
 app.post('/payment-callback', async (req, res) => {
-  console.log('Received payment callback:', req.body); // Log the full request body
+  console.log('Received payment callback at', new Date().toISOString(), ':', req.body); // Log timestamp and body
   const { razorpay_payment_id, razorpay_order_id, razorpay_signature, notes } = req.body;
 
+  // Validate required fields
   if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature || !notes || !notes.phone) {
-    console.error('Missing required payment data:', req.body);
+    console.error('Missing required payment data at', new Date().toISOString(), ':', req.body);
     return res.status(400).json({ error: 'Missing required payment data' });
   }
 
   try {
+    // Step 1: Verify signature
+    console.log('Verifying signature...');
     const generated_signature = require('crypto')
-      .createHmac('sha256', 'uoIibpGn0Me560q0oRodQjrL') // Your test API secret
+      .createHmac('sha256', 'uoIibpGn0Me560q0oRodQjrL')
       .update(razorpay_order_id + '|' + razorpay_payment_id)
       .digest('hex');
-
     if (generated_signature !== razorpay_signature) {
-      console.error('Signature verification failed. Generated:', generated_signature, 'Received:', razorpay_signature);
+      console.error('Signature verification failed at', new Date().toISOString(), ': Generated', generated_signature, 'Received', razorpay_signature);
       return res.status(400).json({ error: 'Payment signature verification failed' });
     }
+    console.log('Signature verified successfully');
 
+    // Step 2: Find the form
     const phone = notes.phone;
-    console.log('Processing payment for phone:', phone);
-
+    console.log('Finding form for phone:', phone);
     const form = await Form.findOne({ phone });
     if (!form) {
-      console.error('Form not found for phone:', phone);
+      console.error('Form not found for phone:', phone, 'at', new Date().toISOString());
       return res.status(404).json({ error: 'Form not found' });
     }
+    console.log('Form found:', form);
 
-    // Mark the form as paid and save transaction
+    // Step 3: Update form as paid
     const paymentDate = new Date().toISOString();
+    console.log('Updating form as paid with paymentDate:', paymentDate);
     const updatedForm = await Form.findOneAndUpdate(
       { phone },
       { paid: true, paymentDate, razorpayPaymentId: razorpay_payment_id },
       { new: true }
     );
-    console.log('Form updated as paid:', updatedForm);
+    console.log('Form updated:', updatedForm);
 
+    // Step 4: Save to sells
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
+    console.log('Calculating total:', total);
     const sell = new Sell({
       phone: form.phone,
       name: form.name,
@@ -487,28 +494,30 @@ app.post('/payment-callback', async (req, res) => {
     await sell.save();
     console.log('Sell saved:', sell);
 
+    // Step 5: Update owner's balance
     let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
     if (!ownerBalance) {
       ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
     }
     ownerBalance.balance += total;
     await ownerBalance.save();
-    console.log('Owner balance updated:', ownerBalance.balance);
+    console.log('Owner balance updated to:', ownerBalance.balance);
 
-    // Delete the form from the forms collection after payment
+    // Step 6: Delete the form
+    console.log('Deleting form for phone:', phone);
     const deleteResult = await Form.deleteOne({ phone });
     if (deleteResult.deletedCount === 1) {
-      console.log(`Form deleted for phone: ${phone}`);
+      console.log('Form deleted successfully');
     } else {
-      console.warn(`Form not found for deletion for phone: ${phone}`);
+      console.warn('Form not found for deletion');
     }
 
-    // Redirect to owner_home.html with phone and payment_id
+    // Step 7: Redirect to owner_home.html
     const redirectUrl = `https://clothstoreayush.netlify.app/ownerButton/owner_home.html?phone=${phone}&payment_id=${razorpay_payment_id}`;
     console.log('Redirecting to:', redirectUrl);
     res.redirect(302, redirectUrl);
   } catch (err) {
-    console.error('Error in payment callback:', {
+    console.error('Error in payment callback at', new Date().toISOString(), ':', {
       message: err.message,
       stack: err.stack,
       body: req.body
