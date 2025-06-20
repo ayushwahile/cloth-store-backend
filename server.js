@@ -386,37 +386,61 @@ app.put('/owner-balance', async (req, res) => {
   }
 });
 
-// Razorpay integration (commented out temporarily to allow deployment)
-// const Razorpay = require('razorpay');
-// const razorpay = new Razorpay({
-//   key_id: process.env.RAZORPAY_KEY_ID,
-//   key_secret: process.env.RAZORPAY_KEY_SECRET
-// });
+// Razorpay integration
+const Razorpay = require('razorpay');
+const razorpay = new Razorpay({
+  key_id: 'rzp_test_2TQGkf0MgdCKqg', // Your test API key
+  key_secret: 'uoIibpGn0Me560q0oRodQjrL' // Your test API secret
+});
 
-// app.post('/create-payment-link', async (req, res) => {
-//   const { amount, customerName, customerPhone } = req.body;
-//   try {
-//     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-//       throw new Error('Razorpay credentials are missing');
-//     }
-//     const paymentLink = await razorpay.paymentLink.create({
-//       amount: amount,
-//       currency: 'INR',
-//       description: `Payment for ${customerName}`,
-//       customer: {
-//         name: customerName,
-//         contact: customerPhone
-//       },
-//       notify: {
-//         sms: true,
-//         email: false
-//       }
-//     });
-//     res.json({ paymentLink: paymentLink.short_url });
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// });
+// API to create a payment link
+app.post('/create-payment-link', async (req, res) => {
+  const { amount, customerName, customerPhone } = req.body;
+  try {
+    if (!amount || !customerName || !customerPhone) {
+      throw new Error('Amount, customer name, and phone are required');
+    }
+
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: amount * 100, // Amount in paise (e.g., 1000 paise = 10 INR)
+      currency: 'INR',
+      description: `Payment for ${customerName}`,
+      customer: {
+        name: customerName,
+        contact: customerPhone
+      },
+      notify: {
+        sms: true,
+        email: false
+      },
+      notes: {
+        type: 'purchase' // Optional: Add context for the payment
+      }
+    });
+    res.json({ paymentLink: paymentLink.short_url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API to verify payment
+app.post('/verify-payment', async (req, res) => {
+  const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+  try {
+    const generated_signature = require('crypto')
+      .createHmac('sha256', 'uoIibpGn0Me560q0oRodQjrL') // Your test API secret
+      .update(razorpay_order_id + '|' + razorpay_payment_id)
+      .digest('hex');
+
+    if (generated_signature === razorpay_signature) {
+      res.json({ status: 'success', message: 'Payment verified successfully' });
+    } else {
+      res.status(400).json({ status: 'failure', message: 'Payment verification failed' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Error verifying payment: ' + err.message });
+  }
+});
 
 // API to save a pending payment
 app.post('/pending-payments', async (req, res) => {
