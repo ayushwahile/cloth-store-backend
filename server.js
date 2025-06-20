@@ -493,7 +493,7 @@ app.post('/payment-callback', async (req, res) => {
     await Form.deleteOne({ phone });
 
     // Redirect to pendingpayment.html with query parameters
-    const redirectUrl = `https://clothstoreayush.netlify.app/pendingpayment.html?phone=${phone}&amount=${total}&payment_id=${razorpay_payment_id}`;
+    const redirectUrl = `https://clothstoreayush.netlify.app/pendingpayment.html?phone=${phone}&payment_id=${razorpay_payment_id}`;
     res.redirect(302, redirectUrl);
   } catch (err) {
     console.error('Error in payment callback:', err.message);
