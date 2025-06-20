@@ -71,7 +71,8 @@ const formSchema = new mongoose.Schema({
     checked: { type: Boolean, default: false } // For border change in details.html
   }],
   paid: { type: Boolean, default: false }, // For payment status
-  paymentDate: String // Added to store payment date
+  paymentDate: String, // Added to store payment date
+  razorpayPaymentId: String // Added to store Razorpay payment ID
 });
 
 const Form = mongoose.model('Form', formSchema);
@@ -89,7 +90,8 @@ const sellSchema = new mongoose.Schema({
     mrp: Number,
     selectedFloor: String // Added to match formSchema and store selectedFloor
   }],
-  paymentDate: { type: Date, required: true } // Changed to Date for proper sorting
+  paymentDate: { type: Date, required: true }, // Changed to Date for proper sorting
+  razorpayPaymentId: String // Added to store Razorpay payment ID
 });
 
 const Sell = mongoose.model('Sell', sellSchema);
@@ -208,7 +210,7 @@ app.put('/forms/:phone/check-product', async (req, res) => {
 // API to mark form as paid (used in bank_payment.html)
 app.put('/forms/:phone/paid', async (req, res) => {
   const { phone } = req.params;
-  const { paymentDate, products } = req.body; // Include products from the request
+  const { paymentDate, products, razorpayPaymentId } = req.body; // Include razorpayPaymentId
   try {
     const form = await Form.findOne({ phone });
     if (!form) {
@@ -218,6 +220,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
     console.log('Received paymentDate:', paymentDate);
     form.paid = true;
     form.paymentDate = paymentDate; // Save the payment date
+    form.razorpayPaymentId = razorpayPaymentId; // Save Razorpay payment ID
     await form.save();
 
     // Save to sells history
@@ -234,7 +237,8 @@ app.put('/forms/:phone/paid', async (req, res) => {
         mrp: product.mrp,
         selectedFloor: product.selectedFloor || ''
       })),
-      paymentDate: new Date(paymentDate) // Convert string to Date
+      paymentDate: new Date(paymentDate), // Convert string to Date
+      razorpayPaymentId: razorpayPaymentId // Save Razorpay payment ID
     });
     await sell.save();
     console.log('Saved sell with paymentDate:', sell.paymentDate);
@@ -414,8 +418,11 @@ app.post('/create-payment-link', async (req, res) => {
         email: false
       },
       notes: {
-        type: 'purchase' // Optional: Add context for the payment
-      }
+        type: 'purchase', // Optional: Add context for the payment
+        phone: customerPhone
+      },
+      callback_url: `${process.env.BACKEND_URL || 'https://cloth-store-backend-7mnm.onrender.com'}/payment-callback`,
+      callback_method: 'post'
     });
     res.json({ paymentLink: paymentLink.short_url });
   } catch (err) {
@@ -439,6 +446,69 @@ app.post('/verify-payment', async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: 'Error verifying payment: ' + err.message });
+  }
+});
+
+// New API to handle payment callback from Razorpay
+app.post('/payment-callback', async (req, res) => {
+  const { razorpay_payment_id, razorpay_order_id, razorpay_signature, notes } = req.body;
+  try {
+    const generated_signature = require('crypto')
+      .createHmac('sha256', 'uoIibpGn0Me560q0oRodQjrL') // Your test API secret
+      .update(razorpay_order_id + '|' + razorpay_payment_id)
+      .digest('hex');
+
+    if (generated_signature !== razorpay_signature) {
+      return res.status(400).json({ error: 'Payment signature verification failed' });
+    }
+
+    const phone = notes.phone;
+    const form = await Form.findOne({ phone });
+    if (!form) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+
+    // Mark the form as paid and save transaction
+    const paymentDate = new Date().toISOString();
+    await Form.findOneAndUpdate(
+      { phone },
+      { paid: true, paymentDate, razorpayPaymentId: razorpay_payment_id },
+      { new: true }
+    );
+
+    const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
+    const sell = new Sell({
+      phone: form.phone,
+      name: form.name,
+      date: form.date,
+      total,
+      products: form.products.map(product => ({
+        brandName: product.brandName,
+        productName: product.productName,
+        size: product.size,
+        mrp: product.mrp,
+        selectedFloor: product.selectedFloor || ''
+      })),
+      paymentDate: new Date(paymentDate),
+      razorpayPaymentId: razorpay_payment_id
+    });
+    await sell.save();
+
+    let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    if (!ownerBalance) {
+      ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+    }
+    ownerBalance.balance += total;
+    await ownerBalance.save();
+
+    await Form.deleteOne({ phone });
+
+    // Redirect to pendingpayment.html with query parameters
+    const redirectUrl = `https://clothstoreayush.netlify.app/pendingpayment.html?phone=${phone}&amount=${total}&payment_id=${razorpay_payment_id}`;
+    res.redirect(302, redirectUrl);
+  } catch (err) {
+    console.error('Error in payment callback:', err.message);
+    res.status(500).json({ error: 'Error processing payment callback: ' + err.message });
   }
 });
 
