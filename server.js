@@ -115,15 +115,6 @@ const ownerBalanceSchema = new mongoose.Schema({
 
 const OwnerBalance = mongoose.model('OwnerBalance', ownerBalanceSchema);
 
-// Schema for Pending Payments (used in pendingpayment.html and owner_home.html)
-const pendingPaymentSchema = new mongoose.Schema({
-  amount: { type: Number, required: true },
-  timestamp: { type: String, required: true },
-  paid: { type: Boolean, default: false }
-});
-
-const PendingPayment = mongoose.model('PendingPayment', pendingPaymentSchema);
-
 // Schema for OTP Sessions (used in owner.html and search.html)
 const otpSessionSchema = new mongoose.Schema({
   phone: { type: String, required: true },
@@ -503,17 +494,6 @@ app.post('/payment-callback', async (req, res) => {
     ownerBalance.balance += total;
     await ownerBalance.save();
     console.log('Owner balance updated:', ownerBalance.balance);
-
-    // Calculate and save pending payment (10 rupees per product)
-    const numProducts = form.products.length;
-    const pendingAmount = numProducts * 10;
-    const pendingPayment = new PendingPayment({
-      amount: pendingAmount,
-      timestamp: paymentDate,
-      paid: false
-    });
-    await pendingPayment.save();
-    console.log('Pending payment saved:', pendingPayment);
 
     // Delete the form from the forms collection after payment
     const deleteResult = await Form.deleteOne({ phone });
