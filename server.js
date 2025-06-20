@@ -397,34 +397,23 @@ const razorpay = new Razorpay({
   key_secret: 'uoIibpGn0Me560q0oRodQjrL' // Your test API secret
 });
 
-// API to create a payment link
-app.post('/create-payment-link', async (req, res) => {
-  const { amount, customerName, customerPhone } = req.body;
+// API to create a Razorpay order
+app.post('/create-order', async (req, res) => {
+  const { amount, customerPhone } = req.body;
   try {
-    if (!amount || !customerName || !customerPhone) {
-      throw new Error('Amount, customer name, and phone are required');
+    if (!amount || !customerPhone) {
+      throw new Error('Amount and customer phone are required');
     }
 
-    const paymentLink = await razorpay.paymentLink.create({
-      amount: amount * 100, // Amount in paise (e.g., 1000 paise = 10 INR)
+    const order = await razorpay.orders.create({
+      amount: amount * 100, // Amount in paise
       currency: 'INR',
-      description: `Payment for ${customerName}`,
-      customer: {
-        name: customerName,
-        contact: customerPhone
-      },
-      notify: {
-        sms: true,
-        email: false
-      },
+      receipt: `receipt_${customerPhone}_${Date.now()}`,
       notes: {
-        type: 'purchase', // Optional: Add context for the payment
         phone: customerPhone
-      },
-      callback_url: `${process.env.BACKEND_URL || 'https://cloth-store-backend-7mnm.onrender.com'}/payment-callback`,
-      callback_method: 'post'
+      }
     });
-    res.json({ paymentLink: paymentLink.short_url });
+    res.json({ order_id: order.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
