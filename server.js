@@ -440,7 +440,14 @@ app.post('/verify-payment', async (req, res) => {
 
 // New API to handle payment callback from Razorpay
 app.post('/payment-callback', async (req, res) => {
+  console.log('Received payment callback:', req.body); // Log the full request body
   const { razorpay_payment_id, razorpay_order_id, razorpay_signature, notes } = req.body;
+
+  if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature || !notes || !notes.phone) {
+    console.error('Missing required payment data:', req.body);
+    return res.status(400).json({ error: 'Missing required payment data' });
+  }
+
   try {
     const generated_signature = require('crypto')
       .createHmac('sha256', 'uoIibpGn0Me560q0oRodQjrL') // Your test API secret
@@ -448,22 +455,27 @@ app.post('/payment-callback', async (req, res) => {
       .digest('hex');
 
     if (generated_signature !== razorpay_signature) {
+      console.error('Signature verification failed. Generated:', generated_signature, 'Received:', razorpay_signature);
       return res.status(400).json({ error: 'Payment signature verification failed' });
     }
 
     const phone = notes.phone;
+    console.log('Processing payment for phone:', phone);
+
     const form = await Form.findOne({ phone });
     if (!form) {
+      console.error('Form not found for phone:', phone);
       return res.status(404).json({ error: 'Form not found' });
     }
 
     // Mark the form as paid and save transaction
     const paymentDate = new Date().toISOString();
-    await Form.findOneAndUpdate(
+    const updatedForm = await Form.findOneAndUpdate(
       { phone },
       { paid: true, paymentDate, razorpayPaymentId: razorpay_payment_id },
       { new: true }
     );
+    console.log('Form updated as paid:', updatedForm);
 
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
     const sell = new Sell({
@@ -482,6 +494,7 @@ app.post('/payment-callback', async (req, res) => {
       razorpayPaymentId: razorpay_payment_id
     });
     await sell.save();
+    console.log('Sell saved:', sell);
 
     let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
     if (!ownerBalance) {
@@ -489,6 +502,7 @@ app.post('/payment-callback', async (req, res) => {
     }
     ownerBalance.balance += total;
     await ownerBalance.save();
+    console.log('Owner balance updated:', ownerBalance.balance);
 
     // Calculate and save pending payment (10 rupees per product)
     const numProducts = form.products.length;
@@ -499,17 +513,27 @@ app.post('/payment-callback', async (req, res) => {
       paid: false
     });
     await pendingPayment.save();
-    console.log(`Saved pending payment: amount=${pendingAmount}, timestamp=${paymentDate}, phone=${phone}`);
+    console.log('Pending payment saved:', pendingPayment);
 
     // Delete the form from the forms collection after payment
-    await Form.deleteOne({ phone });
+    const deleteResult = await Form.deleteOne({ phone });
+    if (deleteResult.deletedCount === 1) {
+      console.log(`Form deleted for phone: ${phone}`);
+    } else {
+      console.warn(`Form not found for deletion for phone: ${phone}`);
+    }
 
     // Redirect to owner_home.html with phone and payment_id
     const redirectUrl = `https://clothstoreayush.netlify.app/ownerButton/owner_home.html?phone=${phone}&payment_id=${razorpay_payment_id}`;
+    console.log('Redirecting to:', redirectUrl);
     res.redirect(302, redirectUrl);
   } catch (err) {
-    console.error('Error in payment callback:', err.message);
-    res.status(500).json({ error: 'Error processing payment callback: ' + err.message });
+    console.error('Error in payment callback:', {
+      message: err.message,
+      stack: err.stack,
+      body: req.body
+    });
+    res.status(500).json({ error: 'Internal Server Error: ' + err.message });
   }
 });
 
