@@ -773,6 +773,31 @@ app.post('/verify-otp', async (req, res) => {
   }
 });
 
+// New API to delete a product from a form (used in details.html)
+app.delete('/forms/:phone/products/:productIndex', async (req, res) => {
+  const { phone, productIndex } = req.params;
+  try {
+    const form = await Form.findOne({ phone });
+    if (!form) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+
+    const index = parseInt(productIndex, 10);
+    if (isNaN(index) || index < 0 || index >= form.products.length) {
+      return res.status(400).json({ error: 'Invalid product index' });
+    }
+
+    // Remove the product at the specified index
+    form.products.splice(index, 1);
+    await form.save();
+
+    res.json({ message: 'Product deleted successfully', updatedForm: form });
+  } catch (err) {
+    console.error('Error deleting product from form:', err.message);
+    res.status(500).json({ error: 'Error deleting product: ' + err.message });
+  }
+});
+
 // Start the backend server
 app.listen(process.env.PORT || 3000, () => {
   console.log('Backend server running on http://localhost:' + (process.env.PORT || 3000));
