@@ -440,6 +440,7 @@ app.post('/payment-callback', async (req, res) => {
     return res.status(400).json({ error: 'Missing required payment data' });
   }
 
+  let form;
   try {
     // Step 1: Verify signature
     console.log('Verifying signature...');
@@ -453,25 +454,35 @@ app.post('/payment-callback', async (req, res) => {
     }
     console.log('Signature verified successfully');
 
-    // Step 2: Find the form
+    // Step 2: Find the form with retry logic
     const phone = notes.phone;
     console.log('Finding form for phone:', phone);
-    const form = await Form.findOne({ phone });
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        form = await Form.findOne({ phone });
+        if (form) break;
+        console.warn(`Form not found for phone ${phone} on attempt ${attempt}, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+      } catch (dbErr) {
+        console.error(`Database error on attempt ${attempt} for phone ${phone}:`, dbErr.message);
+        if (attempt === 3) throw dbErr;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
     if (!form) {
-      console.error('Form not found for phone:', phone, 'at', new Date().toISOString());
-      return res.status(404).json({ error: 'Form not found' });
+      console.error('Form not found after retries for phone:', phone, 'at', new Date().toISOString());
+      return res.status(404).json({ error: 'Form not found after retries' });
     }
     console.log('Form found:', form);
 
     // Step 3: Update form as paid
     const paymentDate = new Date().toISOString();
     console.log('Updating form as paid with paymentDate:', paymentDate);
-    const updatedForm = await Form.findOneAndUpdate(
-      { phone },
-      { paid: true, paymentDate, razorpayPaymentId: razorpay_payment_id },
-      { new: true }
-    );
-    console.log('Form updated:', updatedForm);
+    form.paid = true;
+    form.paymentDate = paymentDate;
+    form.razorpayPaymentId = razorpay_payment_id;
+    await form.save();
+    console.log('Form updated:', form);
 
     // Step 4: Save to sells
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
@@ -509,18 +520,19 @@ app.post('/payment-callback', async (req, res) => {
     if (deleteResult.deletedCount === 1) {
       console.log('Form deleted successfully');
     } else {
-      console.warn('Form not found for deletion');
+      console.warn('Form not found for deletion, possibly already deleted');
     }
 
     // Step 7: Redirect to owner_home.html
-    const redirectUrl = `https://clothstoreayush.netlify.app/ownerButton/owner_home.html?phone=${phone}&payment_id=${razorpay_payment_id}`;
+    const redirectUrl = `https://clothstoreayush.netlify.app/ownerButton/owner_home.html?phone=${encodeURIComponent(phone)}&payment_id=${encodeURIComponent(razorpay_payment_id)}`;
     console.log('Redirecting to:', redirectUrl);
     res.redirect(302, redirectUrl);
   } catch (err) {
     console.error('Error in payment callback at', new Date().toISOString(), ':', {
       message: err.message,
       stack: err.stack,
-      body: req.body
+      body: req.body,
+      formExists: form ? true : false
     });
     res.status(500).json({ error: 'Internal Server Error: ' + err.message });
   }
