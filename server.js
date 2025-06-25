@@ -757,16 +757,7 @@ app.post('/verify-otp-create', async (req, res) => {
 
     otpSession.verified = true;
     await otpSession.save();
-    await OTPSession.deleteOne({ _id: otpSession._id});
-
-    // Store owner details in localStorage after successful verification
-    const account = await Account.findOne({ phone });
-    if (account) {
-      localStorage.setItem('ownerName', account.name);
-      localStorage.setItem('ownerGmail', account.gmail);
-      localStorage.setItem('ownerShopName', account.shopName);
-      localStorage.setItem('ownerPlace', account.place);
-    }
+    await OTPSession.deleteOne({ _id: otpSession._id });
 
     res.status(200).json({ message: 'OTP verified successfully' });
   } catch (err) {
@@ -854,15 +845,6 @@ app.post('/verify-otp', async (req, res) => {
     otpSession.verified = true;
     await otpSession.save();
     await OTPSession.deleteOne({ _id: otpSession._id });
-
-    // Store owner details in localStorage after successful verification
-    const account = await Account.findOne({ phone });
-    if (account) {
-      localStorage.setItem('ownerName', account.name);
-      localStorage.setItem('ownerGmail', account.gmail);
-      localStorage.setItem('ownerShopName', account.shopName);
-      localStorage.setItem('ownerPlace', account.place);
-    }
 
     res.status(200).json({ message: 'OTP verified successfully' });
   } catch (err) {
