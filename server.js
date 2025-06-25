@@ -102,7 +102,8 @@ const productSchema = new mongoose.Schema({
   productName: { type: String, required: true },
   size: { type: String, required: true },
   originalMrp: { type: Number, required: true }, // Store the original MRP entered by the owner
-  adjustedMrp: { type: Number, required: true }  // Store the adjusted MRP (original + 10)
+  adjustedMrp: { type: Number, required: true },  // Store the adjusted MRP (original + 10)
+  ownerPhone: { type: String, required: true }   // Link to the account's phone number
 });
 
 const Product = mongoose.model('Product', productSchema);
@@ -126,7 +127,7 @@ const otpSessionSchema = new mongoose.Schema({
 
 const OTPSession = mongoose.model('OTPSession', otpSessionSchema);
 
-// New Schema for Accounts
+// Schema for Accounts
 const accountSchema = new mongoose.Schema({
   phone: { type: String, required: true, unique: true },
   gmail: { type: String, required: true, unique: true },
@@ -144,14 +145,12 @@ app.post('/forms', async (req, res) => {
   try {
     let form = await Form.findOne({ phone });
     if (form) {
-      // Update existing form (e.g., add products)
       if (products) {
         form.products = [...form.products, ...products];
       }
       await form.save();
       res.json(form);
     } else {
-      // Create new form
       form = new Form({ phone, name, date, products: products || [] });
       await form.save();
       res.status(201).json(form);
@@ -165,12 +164,12 @@ app.post('/forms', async (req, res) => {
 app.get('/forms', async (req, res) => {
   const { phone } = req.query;
   try {
-    const fields = req.query.fields; // Check for fields query parameter
+    const fields = req.query.fields;
     let forms;
     if (fields === 'phone') {
-      forms = await Form.find(phone ? { phone } : {}, 'phone'); // Only fetch phone numbers, filter by phone if provided
+      forms = await Form.find(phone ? { phone } : {}, 'phone');
     } else {
-      forms = await Form.find(phone ? { phone } : {}); // Fetch full form data, filter by phone if provided
+      forms = await Form.find(phone ? { phone } : {});
     }
     res.json(forms);
   } catch (err) {
@@ -214,7 +213,7 @@ app.put('/forms/:phone/check-product', async (req, res) => {
 // API to mark form as paid (used in bank_payment.html)
 app.put('/forms/:phone/paid', async (req, res) => {
   const { phone } = req.params;
-  const { paymentDate, products, razorpayPaymentId } = req.body; // Include razorpayPaymentId
+  const { paymentDate, products, razorpayPaymentId } = req.body;
   try {
     const form = await Form.findOne({ phone });
     if (!form) {
@@ -223,11 +222,10 @@ app.put('/forms/:phone/paid', async (req, res) => {
 
     console.log('Received paymentDate:', paymentDate);
     form.paid = true;
-    form.paymentDate = paymentDate; // Save the payment date
-    form.razorpayPaymentId = razorpayPaymentId; // Save Razorpay payment ID
+    form.paymentDate = paymentDate;
+    form.razorpayPaymentId = razorpayPaymentId;
     await form.save();
 
-    // Save to sells history
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
     const sell = new Sell({
       phone: form.phone,
@@ -241,13 +239,12 @@ app.put('/forms/:phone/paid', async (req, res) => {
         mrp: product.mrp,
         selectedFloor: product.selectedFloor || ''
       })),
-      paymentDate: new Date(paymentDate), // Convert string to Date
-      razorpayPaymentId: razorpayPaymentId // Save Razorpay payment ID
+      paymentDate: new Date(paymentDate),
+      razorpayPaymentId: razorpayPaymentId
     });
     await sell.save();
     console.log('Saved sell with paymentDate:', sell.paymentDate);
 
-    // Update owner's bank balance
     let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
     if (!ownerBalance) {
       ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
@@ -255,7 +252,6 @@ app.put('/forms/:phone/paid', async (req, res) => {
     ownerBalance.balance += total;
     await ownerBalance.save();
 
-    // Delete the form from the forms collection after payment
     const deleteResult = await Form.deleteOne({ phone });
     if (deleteResult.deletedCount === 1) {
       console.log(`Successfully deleted form with phone number ${phone} after payment`);
@@ -274,7 +270,7 @@ app.put('/forms/:phone/paid', async (req, res) => {
 app.get('/sells', async (req, res) => {
   const { phone } = req.query;
   try {
-    const sells = await Sell.find(phone ? { phone } : {}).sort({ paymentDate: -1 }); // Sort by paymentDate in descending order (newest first)
+    const sells = await Sell.find(phone ? { phone } : {}).sort({ paymentDate: -1 });
     console.log('Fetched sells:', sells.map(sell => ({ phone: sell.phone, paymentDate: sell.paymentDate })));
     res.json(sells);
   } catch (err) {
@@ -286,7 +282,7 @@ app.get('/sells', async (req, res) => {
 app.get('/shopping/:phone', async (req, res) => {
   const { phone } = req.params;
   try {
-    const sells = await Sell.find({ phone }).sort({ paymentDate: -1 }); // Sort by paymentDate in descending order
+    const sells = await Sell.find({ phone }).sort({ paymentDate: -1 });
     res.json(sells);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving shopping history: ' + err.message });
@@ -298,10 +294,9 @@ app.get('/products', async (req, res) => {
   const { phone } = req.query;
   try {
     const products = await Product.find(phone ? { ownerPhone: phone } : {});
-    // Map products to maintain backward compatibility with existing code expecting 'mrp'
     const formattedProducts = products.map(product => ({
       ...product._doc,
-      mrp: product.adjustedMrp // Add mrp field for backward compatibility
+      mrp: product.adjustedMrp
     }));
     res.json(formattedProducts);
   } catch (err) {
@@ -314,11 +309,10 @@ app.post('/products', async (req, res) => {
   const { brandName, productName, size, mrp, phone } = req.body;
   try {
     const originalMrp = Number(mrp);
-    const adjustedMrp = originalMrp + 10; // Add 10 Rs to the MRP for the additional fee
+    const adjustedMrp = originalMrp + 10;
     console.log(`Creating product with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp}`);
     const product = new Product({ brandName, productName, size, originalMrp, adjustedMrp, ownerPhone: phone });
     await product.save();
-    // Add mrp field to response for backward compatibility
     res.status(201).json({ ...product._doc, mrp: adjustedMrp });
   } catch (err) {
     res.status(500).json({ error: 'Error creating product: ' + err.message });
@@ -331,7 +325,7 @@ app.put('/products/:id', async (req, res) => {
   const { brandName, productName, size, mrp, phone } = req.body;
   try {
     const originalMrp = Number(mrp);
-    const adjustedMrp = originalMrp + 10; // Add 10 Rs to the MRP for the additional fee
+    const adjustedMrp = originalMrp + 10;
     console.log(`Updating product ID: ${id} with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp}`);
     const product = await Product.findByIdAndUpdate(
       id,
@@ -339,7 +333,6 @@ app.put('/products/:id', async (req, res) => {
       { new: true }
     );
     if (product) {
-      // Add mrp field to response for backward compatibility
       res.json({ ...product._doc, mrp: adjustedMrp });
     } else {
       res.status(404).json({ error: 'Product not found' });
@@ -430,7 +423,7 @@ app.post('/verify-payment', async (req, res) => {
   const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
   try {
     const generated_signature = require('crypto')
-      .createHmac('sha256', 'uoIibpGn0Me560q0oRodQjrL') // Your test API secret
+      .createHmac('sha256', 'uoIibpGn0Me560q0oRodQjrL')
       .update(razorpay_order_id + '|' + razorpay_payment_id)
       .digest('hex');
 
@@ -444,12 +437,11 @@ app.post('/verify-payment', async (req, res) => {
   }
 });
 
-// New API to handle payment callback from Razorpay
+// API to handle payment callback from Razorpay
 app.post('/payment-callback', async (req, res) => {
-  console.log('Received payment callback at', new Date().toISOString(), ':', req.body); // Log timestamp and body
+  console.log('Received payment callback at', new Date().toISOString(), ':', req.body);
   const { razorpay_payment_id, razorpay_order_id, razorpay_signature, notes } = req.body;
 
-  // Validate required fields
   if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature || !notes || !notes.phone) {
     console.error('Missing required payment data at', new Date().toISOString(), ':', req.body);
     return res.status(400).json({ error: 'Missing required payment data' });
@@ -457,7 +449,6 @@ app.post('/payment-callback', async (req, res) => {
 
   let form;
   try {
-    // Step 1: Verify signature
     console.log('Verifying signature...');
     const generated_signature = require('crypto')
       .createHmac('sha256', 'uoIibpGn0Me560q0oRodQjrL')
@@ -469,7 +460,6 @@ app.post('/payment-callback', async (req, res) => {
     }
     console.log('Signature verified successfully');
 
-    // Step 2: Find the form with retry logic
     const phone = notes.phone;
     console.log('Finding form for phone:', phone);
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -477,7 +467,7 @@ app.post('/payment-callback', async (req, res) => {
         form = await Form.findOne({ phone });
         if (form) break;
         console.warn(`Form not found for phone ${phone} on attempt ${attempt}, retrying...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
       } catch (dbErr) {
         console.error(`Database error on attempt ${attempt} for phone ${phone}:`, dbErr.message);
         if (attempt === 3) throw dbErr;
@@ -490,7 +480,6 @@ app.post('/payment-callback', async (req, res) => {
     }
     console.log('Form found:', form);
 
-    // Step 3: Update form as paid
     const paymentDate = new Date().toISOString();
     console.log('Updating form as paid with paymentDate:', paymentDate);
     form.paid = true;
@@ -499,7 +488,6 @@ app.post('/payment-callback', async (req, res) => {
     await form.save();
     console.log('Form updated:', form);
 
-    // Step 4: Save to sells
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
     console.log('Calculating total:', total);
     const sell = new Sell({
@@ -520,7 +508,6 @@ app.post('/payment-callback', async (req, res) => {
     await sell.save();
     console.log('Sell saved:', sell);
 
-    // Step 5: Update owner's balance
     let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
     if (!ownerBalance) {
       ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
@@ -529,7 +516,6 @@ app.post('/payment-callback', async (req, res) => {
     await ownerBalance.save();
     console.log('Owner balance updated to:', ownerBalance.balance);
 
-    // Step 6: Delete the form
     console.log('Deleting form for phone:', phone);
     const deleteResult = await Form.deleteOne({ phone });
     if (deleteResult.deletedCount === 1) {
@@ -538,7 +524,6 @@ app.post('/payment-callback', async (req, res) => {
       console.warn('Form not found for deletion, possibly already deleted');
     }
 
-    // Step 7: Redirect to owner_home.html
     const redirectUrl = `https://clothstoreayush.netlify.app/ownerButton/owner_home.html?phone=${encodeURIComponent(phone)}&payment_id=${encodeURIComponent(razorpay_payment_id)}`;
     console.log('Redirecting to:', redirectUrl);
     res.redirect(302, redirectUrl);
@@ -560,7 +545,7 @@ app.get('/pending-payments/previous-day', async (req, res) => {
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
-    const yesterdayStart = yesterday.toISOString().split('T')[0]; // e.g., "2025-06-15"
+    const yesterdayStart = yesterday.toISOString().split('T')[0];
 
     const pendingPayments = await PendingPayment.find({
       phone: phone,
@@ -586,7 +571,6 @@ app.put('/pending-payments/pay', async (req, res) => {
       { new: true }
     );
     if (pendingPayment) {
-      // Update owner's bank balance for pending payment
       let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
       if (!ownerBalance) {
         ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
@@ -610,37 +594,22 @@ app.put('/pending-payments/pay', async (req, res) => {
 app.post('/send-otp', async (req, res) => {
   const { phone } = req.body;
   try {
-    // Validate phone number
     if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
       return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit number.' });
     }
 
-    // Check if phone matches the owner's phone number
     if (phone !== OWNER_PHONE_NUMBER) {
       return res.status(403).json({ error: 'Phone number does not match the owner\'s phone number.' });
     }
 
-    // Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Calculate expiration time (10 minutes from now)
     const createdAt = new Date();
-    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000);
 
-    // Delete any existing OTP sessions for this phone number
     await OTPSession.deleteMany({ phone });
-
-    // Save the OTP session
-    const otpSession = new OTPSession({
-      phone,
-      otp,
-      createdAt,
-      expiresAt,
-      verified: false
-    });
+    const otpSession = new OTPSession({ phone, otp, createdAt, expiresAt, verified: false });
     await otpSession.save();
 
-    // Send OTP via Fast2SMS
     const response = await axios.post(
       'https://www.fast2sms.com/dev/bulkV2',
       {
@@ -659,14 +628,11 @@ app.post('/send-otp', async (req, res) => {
 
     if (response.data.return !== true) {
       console.error('Fast2SMS Error Details:', response.data);
-      return res.status(500).json({ 
-        error: 'Failed to send OTP via SMS.', 
-        details: response.data.message || 'Unknown error from Fast2SMS'
-      });
+      return res.status(500).json({ error: 'Failed to send OTP via SMS.', details: response.data.message || 'Unknown error from Fast2SMS' });
     }
 
-    console.log(`OTP sent to ${phone}: ${otp}`); // Log for debugging (remove in production)
-    res.status(200).json({ message: 'OTP sent successfully' }); // Do not return OTP in production
+    console.log(`OTP sent to ${phone}: ${otp}`);
+    res.status(200).json({ message: 'OTP sent successfully' });
   } catch (err) {
     console.error('Error sending OTP:', err.message);
     res.status(500).json({ error: 'Error sending OTP: ' + err.message });
@@ -677,32 +643,18 @@ app.post('/send-otp', async (req, res) => {
 app.post('/send-otp-form', async (req, res) => {
   const { phone } = req.body;
   try {
-    // Validate phone number
     if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
       return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit number.' });
     }
 
-    // Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Calculate expiration time (10 minutes from now)
     const createdAt = new Date();
-    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000);
 
-    // Delete any existing OTP sessions for this phone number
     await OTPSession.deleteMany({ phone });
-
-    // Save the OTP session
-    const otpSession = new OTPSession({
-      phone,
-      otp,
-      createdAt,
-      expiresAt,
-      verified: false
-    });
+    const otpSession = new OTPSession({ phone, otp, createdAt, expiresAt, verified: false });
     await otpSession.save();
 
-    // Send OTP via Fast2SMS
     const response = await axios.post(
       'https://www.fast2sms.com/dev/bulkV2',
       {
@@ -721,50 +673,33 @@ app.post('/send-otp-form', async (req, res) => {
 
     if (response.data.return !== true) {
       console.error('Fast2SMS Error Details:', response.data);
-      return res.status(500).json({ 
-        error: 'Failed to send OTP via SMS.', 
-        details: response.data.message || 'Unknown error from Fast2SMS'
-      });
+      return res.status(500).json({ error: 'Failed to send OTP via SMS.', details: response.data.message || 'Unknown error from Fast2SMS' });
     }
 
-    console.log(`OTP sent to ${phone}: ${otp}`); // Log for debugging (remove in production)
-    res.status(200).json({ message: 'OTP sent successfully' }); // Do not return OTP in production
+    console.log(`OTP sent to ${phone}: ${otp}`);
+    res.status(200).json({ message: 'OTP sent successfully' });
   } catch (err) {
     console.error('Error sending OTP for form creation:', err.message);
     res.status(500).json({ error: 'Error sending OTP: ' + err.message });
   }
 });
 
-// New API to send OTP for account creation
+// API to send OTP for account creation
 app.post('/send-otp-create', async (req, res) => {
   const { phone } = req.body;
   try {
-    // Validate phone number
     if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
       return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit number.' });
     }
 
-    // Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Calculate expiration time (10 minutes from now)
     const createdAt = new Date();
-    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000);
 
-    // Delete any existing OTP sessions for this phone number
     await OTPSession.deleteMany({ phone });
-
-    // Save the OTP session
-    const otpSession = new OTPSession({
-      phone,
-      otp,
-      createdAt,
-      expiresAt,
-      verified: false
-    });
+    const otpSession = new OTPSession({ phone, otp, createdAt, expiresAt, verified: false });
     await otpSession.save();
 
-    // Send OTP via Fast2SMS
     const response = await axios.post(
       'https://www.fast2sms.com/dev/bulkV2',
       {
@@ -783,57 +718,46 @@ app.post('/send-otp-create', async (req, res) => {
 
     if (response.data.return !== true) {
       console.error('Fast2SMS Error Details:', response.data);
-      return res.status(500).json({ 
-        error: 'Failed to send OTP via SMS.', 
-        details: response.data.message || 'Unknown error from Fast2SMS'
-      });
+      return res.status(500).json({ error: 'Failed to send OTP via SMS.', details: response.data.message || 'Unknown error from Fast2SMS' });
     }
 
-    console.log(`OTP sent to ${phone}: ${otp}`); // Log for debugging (remove in production)
-    res.status(200).json({ message: 'OTP sent successfully' }); // Do not return OTP in production
+    console.log(`OTP sent to ${phone}: ${otp}`);
+    res.status(200).json({ message: 'OTP sent successfully' });
   } catch (err) {
     console.error('Error sending OTP for account creation:', err.message);
     res.status(500).json({ error: 'Error sending OTP: ' + err.message });
   }
 });
 
-// New API to verify OTP for account creation
+// API to verify OTP for account creation
 app.post('/verify-otp-create', async (req, res) => {
   const { phone, otp } = req.body;
   try {
-    // Validate inputs
     if (!phone || !otp) {
       return res.status(400).json({ error: 'Phone number and OTP are required.' });
     }
 
-    // Find the most recent OTP session for this phone number
     const otpSession = await OTPSession.findOne({ phone }).sort({ createdAt: -1 });
 
     if (!otpSession) {
       return res.status(404).json({ error: 'No OTP session found for this phone number.' });
     }
 
-    // Check if OTP has expired
     const now = new Date();
     if (now > otpSession.expiresAt) {
       return res.status(400).json({ error: 'OTP has expired.' });
     }
 
-    // Check if OTP has already been verified
     if (otpSession.verified) {
       return res.status(400).json({ error: 'OTP has already been used.' });
     }
 
-    // Verify the OTP
     if (otpSession.otp !== otp) {
       return res.status(400).json({ error: 'Invalid OTP.' });
     }
 
-    // Mark the OTP session as verified
     otpSession.verified = true;
     await otpSession.save();
-
-    // Delete the OTP session after successful verification
     await OTPSession.deleteOne({ _id: otpSession._id });
 
     res.status(200).json({ message: 'OTP verified successfully' });
@@ -843,29 +767,23 @@ app.post('/verify-otp-create', async (req, res) => {
   }
 });
 
-// New API to create an account
+// API to create an account
 app.post('/create-account', async (req, res) => {
   const { phone, name, gmail, shopName, place } = req.body;
+  console.log('Received create-account request:', { phone, name, gmail, shopName, place }); // Debug log
   try {
-    // Validate inputs
     if (!phone || !name || !gmail || !shopName || !place) {
       return res.status(400).json({ error: 'All fields (phone, name, gmail, shopName, place) are required.' });
     }
 
-    // Check if phone or gmail already exists
     const existingAccount = await Account.findOne({ $or: [{ phone }, { gmail }] });
     if (existingAccount) {
       return res.status(400).json({ error: 'Phone number or Gmail already registered.' });
     }
 
-    // Create new account
     const account = new Account({ phone, name, gmail, shopName, place });
     await account.save();
-
-    // Set authentication for immediate login
-    localStorage.setItem('isAuthenticated', 'true');
-    localStorage.setItem('ownerPhone', phone);
-    localStorage.setItem('ownerGmail', gmail);
+    console.log('Account created successfully for phone:', phone); // Debug log
 
     res.status(201).json({ message: 'Account created successfully' });
   } catch (err) {
@@ -874,7 +792,7 @@ app.post('/create-account', async (req, res) => {
   }
 });
 
-// New API to delete a product from a form (used in details.html)
+// API to delete a product from a form (used in details.html)
 app.delete('/forms/:phone/products/:productIndex', async (req, res) => {
   const { phone, productIndex } = req.params;
   try {
@@ -888,7 +806,6 @@ app.delete('/forms/:phone/products/:productIndex', async (req, res) => {
       return res.status(400).json({ error: 'Invalid product index' });
     }
 
-    // Remove the product at the specified index
     form.products.splice(index, 1);
     await form.save();
 
