@@ -65,11 +65,11 @@ const formSchema = new mongoose.Schema({
     size: String,
     mrp: Number,
     selectedFloor: String,
-    checked: { type: Boolean, default: false } // For border change in details.html
+    checked: { type: Boolean, default: false }
   }],
-  paid: { type: Boolean, default: false }, // For payment status
-  paymentDate: String, // Added to store payment date
-  razorpayPaymentId: String // Added to store Razorpay payment ID
+  paid: { type: Boolean, default: false },
+  paymentDate: String,
+  razorpayPaymentId: String
 });
 
 const Form = mongoose.model('Form', formSchema);
@@ -85,10 +85,10 @@ const sellSchema = new mongoose.Schema({
     productName: String,
     size: String,
     mrp: Number,
-    selectedFloor: String // Added to match formSchema and store selectedFloor
+    selectedFloor: String
   }],
-  paymentDate: { type: Date, required: true }, // Changed to Date for proper sorting
-  razorpayPaymentId: String // Added to store Razorpay payment ID
+  paymentDate: { type: Date, required: true },
+  razorpayPaymentId: String
 });
 
 const Sell = mongoose.model('Sell', sellSchema);
@@ -98,16 +98,16 @@ const productSchema = new mongoose.Schema({
   brandName: { type: String, required: true },
   productName: { type: String, required: true },
   size: { type: String, required: true },
-  originalMrp: { type: Number, required: true }, // Store the original MRP entered by the owner
-  adjustedMrp: { type: Number, required: true },  // Store the adjusted MRP (original + 10)
-  ownerPhone: { type: String, required: true }   // Link to the account's phone number
+  originalMrp: { type: Number, required: true },
+  adjustedMrp: { type: Number, required: true },
+  ownerPhone: { type: String, required: true }
 });
 
 const Product = mongoose.model('Product', productSchema);
 
 // Schema for Owner's Bank Balance (added for bank_payment.html)
 const ownerBalanceSchema = new mongoose.Schema({
-  ownerId: { type: String, required: true, unique: true }, // For simplicity, use a fixed ownerId
+  ownerId: { type: String, required: true, unique: true },
   balance: { type: Number, default: 0 }
 });
 
@@ -163,10 +163,10 @@ app.get('/forms', async (req, res) => {
   try {
     const fields = req.query.fields;
     let forms;
-    if (fields === 'phone') {
-      forms = await Form.find(phone ? { phone } : {}, 'phone');
+    if (phone) {
+      forms = await Form.find({ phone }, fields === 'phone' ? 'phone' : {});
     } else {
-      forms = await Form.find(phone ? { phone } : {});
+      forms = await Form.find({});
     }
     res.json(forms);
   } catch (err) {
@@ -242,9 +242,9 @@ app.put('/forms/:phone/paid', async (req, res) => {
     await sell.save();
     console.log('Saved sell with paymentDate:', sell.paymentDate);
 
-    let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    let ownerBalance = await OwnerBalance.findOne({ ownerId: phone });
     if (!ownerBalance) {
-      ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+      ownerBalance = new OwnerBalance({ ownerId: phone, balance: 0 });
     }
     ownerBalance.balance += total;
     await ownerBalance.save();
@@ -356,12 +356,13 @@ app.delete('/products/:id', async (req, res) => {
 
 // API to get owner's bank balance (added for bank_payment.html)
 app.get('/owner-balance', async (req, res) => {
+  const { phone } = req.query;
   try {
-    const ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    const ownerBalance = await OwnerBalance.findOne({ ownerId: phone || 'owner' });
     if (ownerBalance) {
       res.json({ balance: ownerBalance.balance });
     } else {
-      const newBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+      const newBalance = new OwnerBalance({ ownerId: phone || 'owner', balance: 0 });
       await newBalance.save();
       res.json({ balance: 0 });
     }
@@ -372,11 +373,11 @@ app.get('/owner-balance', async (req, res) => {
 
 // API to update owner's bank balance (added for bank_payment.html)
 app.put('/owner-balance', async (req, res) => {
-  const { amount } = req.body;
+  const { amount, phone } = req.body;
   try {
-    let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    let ownerBalance = await OwnerBalance.findOne({ ownerId: phone || 'owner' });
     if (!ownerBalance) {
-      ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+      ownerBalance = new OwnerBalance({ ownerId: phone || 'owner', balance: 0 });
     }
     ownerBalance.balance += amount;
     await ownerBalance.save();
@@ -389,8 +390,8 @@ app.put('/owner-balance', async (req, res) => {
 // Razorpay integration
 const Razorpay = require('razorpay');
 const razorpay = new Razorpay({
-  key_id: 'rzp_test_2TQGkf0MgdCKqg', // Your test API key
-  key_secret: 'uoIibpGn0Me560q0oRodQjrL' // Your test API secret
+  key_id: 'rzp_test_2TQGkf0MgdCKqg',
+  key_secret: 'uoIibpGn0Me560q0oRodQjrL'
 });
 
 // API to create a Razorpay order
@@ -402,7 +403,7 @@ app.post('/create-order', async (req, res) => {
     }
 
     const order = await razorpay.orders.create({
-      amount: amount * 100, // Amount in paise
+      amount: amount * 100,
       currency: 'INR',
       receipt: `receipt_${customerPhone}_${Date.now()}`,
       notes: {
@@ -505,9 +506,9 @@ app.post('/payment-callback', async (req, res) => {
     await sell.save();
     console.log('Sell saved:', sell);
 
-    let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+    let ownerBalance = await OwnerBalance.findOne({ ownerId: phone });
     if (!ownerBalance) {
-      ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+      ownerBalance = new OwnerBalance({ ownerId: phone, balance: 0 });
     }
     ownerBalance.balance += total;
     await ownerBalance.save();
@@ -568,9 +569,9 @@ app.put('/pending-payments/pay', async (req, res) => {
       { new: true }
     );
     if (pendingPayment) {
-      let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
+      let ownerBalance = await OwnerBalance.findOne({ ownerId: pendingPayment.phone });
       if (!ownerBalance) {
-        ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
+        ownerBalance = new OwnerBalance({ ownerId: pendingPayment.phone, balance: 0 });
       }
       ownerBalance.balance += pendingPayment.amount;
       await ownerBalance.save();
@@ -595,7 +596,6 @@ app.post('/send-otp', async (req, res) => {
       return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit number.' });
     }
 
-    // Check if an account exists for the phone number
     const account = await Account.findOne({ phone });
     if (!account) {
       return res.status(404).json({ error: 'ACCOUNT NOT CREATED' });
@@ -757,7 +757,16 @@ app.post('/verify-otp-create', async (req, res) => {
 
     otpSession.verified = true;
     await otpSession.save();
-    await OTPSession.deleteOne({ _id: otpSession._id });
+    await OTPSession.deleteOne({ _id: otpSession._id});
+
+    // Store owner details in localStorage after successful verification
+    const account = await Account.findOne({ phone });
+    if (account) {
+      localStorage.setItem('ownerName', account.name);
+      localStorage.setItem('ownerGmail', account.gmail);
+      localStorage.setItem('ownerShopName', account.shopName);
+      localStorage.setItem('ownerPlace', account.place);
+    }
 
     res.status(200).json({ message: 'OTP verified successfully' });
   } catch (err) {
@@ -769,7 +778,7 @@ app.post('/verify-otp-create', async (req, res) => {
 // API to create an account
 app.post('/create-account', async (req, res) => {
   const { phone, name, gmail, shopName, place } = req.body;
-  console.log('Received create-account request:', { phone, name, gmail, shopName, place }); // Debug log
+  console.log('Received create-account request:', { phone, name, gmail, shopName, place });
   try {
     if (!phone || !name || !gmail || !shopName || !place) {
       return res.status(400).json({ error: 'All fields (phone, name, gmail, shopName, place) are required.' });
@@ -782,7 +791,7 @@ app.post('/create-account', async (req, res) => {
 
     const account = new Account({ phone, name, gmail, shopName, place });
     await account.save();
-    console.log('Account created successfully for phone:', phone); // Debug log
+    console.log('Account created successfully for phone:', phone);
 
     res.status(201).json({ message: 'Account created successfully' });
   } catch (err) {
@@ -846,10 +855,34 @@ app.post('/verify-otp', async (req, res) => {
     await otpSession.save();
     await OTPSession.deleteOne({ _id: otpSession._id });
 
+    // Store owner details in localStorage after successful verification
+    const account = await Account.findOne({ phone });
+    if (account) {
+      localStorage.setItem('ownerName', account.name);
+      localStorage.setItem('ownerGmail', account.gmail);
+      localStorage.setItem('ownerShopName', account.shopName);
+      localStorage.setItem('ownerPlace', account.place);
+    }
+
     res.status(200).json({ message: 'OTP verified successfully' });
   } catch (err) {
     console.error('Error verifying OTP for owner login:', err.message);
     res.status(500).json({ error: 'Error verifying OTP: ' + err.message });
+  }
+});
+
+// API to get owner details by phone
+app.get('/owner-details/:phone', async (req, res) => {
+  const { phone } = req.params;
+  try {
+    const account = await Account.findOne({ phone });
+    if (account) {
+      res.json(account);
+    } else {
+      res.status(404).json({ error: 'Account not found' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Error retrieving owner details: ' + err.message });
   }
 });
 
