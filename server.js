@@ -338,6 +338,7 @@ app.put('/products/:id', async (req, res) => {
     res.status(500).json({ error: 'Error updating product: ' + err.message });
   }
 });
+
 // API to delete a product (used in products.html)
 app.delete('/products/:id', async (req, res) => {
   const { id } = req.params;
@@ -694,7 +695,8 @@ app.post('/send-otp-create', async (req, res) => {
     const createdAt = new Date();
     const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000);
 
-    await OTPSession.deleteMany({ phone });
+    // Ensure only one active OTP session per phone
+    await OTPSession.deleteMany({ phone, verified: false });
     const otpSession = new OTPSession({ phone, otp, createdAt, expiresAt, verified: false });
     await otpSession.save();
 
@@ -735,7 +737,7 @@ app.post('/verify-otp-create', async (req, res) => {
       return res.status(400).json({ error: 'Phone number and OTP are required.' });
     }
 
-    const otpSession = await OTPSession.findOne({ phone }).sort({ createdAt: -1 });
+    const otpSession = await OTPSession.findOne({ phone, verified: false }).sort({ createdAt: -1 });
 
     if (!otpSession) {
       return res.status(404).json({ error: 'No OTP session found for this phone number.' });
@@ -743,11 +745,8 @@ app.post('/verify-otp-create', async (req, res) => {
 
     const now = new Date();
     if (now > otpSession.expiresAt) {
+      await OTPSession.deleteOne({ _id: otpSession._id });
       return res.status(400).json({ error: 'OTP has expired.' });
-    }
-
-    if (otpSession.verified) {
-      return res.status(400).json({ error: 'OTP has already been used.' });
     }
 
     if (otpSession.otp !== otp) {
