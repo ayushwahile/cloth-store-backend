@@ -338,7 +338,6 @@ app.put('/products/:id', async (req, res) => {
     res.status(500).json({ error: 'Error updating product: ' + err.message });
   }
 });
-
 // API to delete a product (used in products.html)
 app.delete('/products/:id', async (req, res) => {
   const { id } = req.params;
