@@ -9,9 +9,6 @@ const app = express();
 app.use(express.json());
 app.use(cors()); // Allows your website to connect to the backend
 
-// Hardcode the owner's phone number
-const OWNER_PHONE_NUMBER = "7276099625";
-
 // Load Fast2SMS API key from environment variables
 const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || 'EkqoTCwPlzqCgY8escbyntH2wc9kwSOT33009jjrqWjRTJnsag8bQg726Wt4';
 
@@ -590,7 +587,7 @@ app.put('/pending-payments/pay', async (req, res) => {
   }
 });
 
-// API to send OTP for owner (used in owner.html, restricted to OWNER_PHONE_NUMBER)
+// API to send OTP for owner (used in owner.html, checks if account exists)
 app.post('/send-otp', async (req, res) => {
   const { phone } = req.body;
   try {
@@ -598,8 +595,10 @@ app.post('/send-otp', async (req, res) => {
       return res.status(400).json({ error: 'Invalid phone number. Must be a 10-digit number.' });
     }
 
-    if (phone !== OWNER_PHONE_NUMBER) {
-      return res.status(403).json({ error: 'Phone number does not match the owner\'s phone number.' });
+    // Check if an account exists for the phone number
+    const account = await Account.findOne({ phone });
+    if (!account) {
+      return res.status(404).json({ error: 'ACCOUNT NOT CREATED' });
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -813,6 +812,44 @@ app.delete('/forms/:phone/products/:productIndex', async (req, res) => {
   } catch (err) {
     console.error('Error deleting product from form:', err.message);
     res.status(500).json({ error: 'Error deleting product: ' + err.message });
+  }
+});
+
+// API to verify OTP for owner login
+app.post('/verify-otp', async (req, res) => {
+  const { phone, otp } = req.body;
+  try {
+    if (!phone || !otp) {
+      return res.status(400).json({ error: 'Phone number and OTP are required.' });
+    }
+
+    const otpSession = await OTPSession.findOne({ phone }).sort({ createdAt: -1 });
+
+    if (!otpSession) {
+      return res.status(404).json({ error: 'No OTP session found for this phone number.' });
+    }
+
+    const now = new Date();
+    if (now > otpSession.expiresAt) {
+      return res.status(400).json({ error: 'OTP has expired.' });
+    }
+
+    if (otpSession.verified) {
+      return res.status(400).json({ error: 'OTP has already been used.' });
+    }
+
+    if (otpSession.otp !== otp) {
+      return res.status(400).json({ error: 'Invalid OTP.' });
+    }
+
+    otpSession.verified = true;
+    await otpSession.save();
+    await OTPSession.deleteOne({ _id: otpSession._id });
+
+    res.status(200).json({ message: 'OTP verified successfully' });
+  } catch (err) {
+    console.error('Error verifying OTP for owner login:', err.message);
+    res.status(500).json({ error: 'Error verifying OTP: ' + err.message });
   }
 });
 
