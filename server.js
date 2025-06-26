@@ -270,7 +270,7 @@ app.get('/sells', async (req, res) => {
   }
   try {
     const sells = await Sell.find({ phone }).sort({ paymentDate: -1 });
-    console.log('Fetched sells:', sells.map(sell => ({ phone: sell.phone, paymentDate: sell.paymentDate })));
+    console.log('Fetched sells for phone:', phone, sells.map(sell => ({ phone: sell.phone, paymentDate: sell.paymentDate })));
     res.json(sells);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving sells: ' + err.message });
@@ -309,10 +309,13 @@ app.get('/products', async (req, res) => {
 // API to create a new product (used in products.html)
 app.post('/products', async (req, res) => {
   const { brandName, productName, size, mrp, phone } = req.body;
+  if (!phone || !/^\d{10}$/.test(phone)) {
+    return res.status(400).json({ error: 'Invalid or missing phone number. Must be a 10-digit number.' });
+  }
   try {
     const originalMrp = Number(mrp);
     const adjustedMrp = originalMrp + 10;
-    console.log(`Creating product with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp}`);
+    console.log(`Creating product with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp} for phone: ${phone}`);
     const product = new Product({ brandName, productName, size, originalMrp, adjustedMrp, ownerPhone: phone });
     await product.save();
     res.status(201).json({ ...product._doc, mrp: adjustedMrp });
@@ -325,10 +328,13 @@ app.post('/products', async (req, res) => {
 app.put('/products/:id', async (req, res) => {
   const { id } = req.params;
   const { brandName, productName, size, mrp, phone } = req.body;
+  if (!phone || !/^\d{10}$/.test(phone)) {
+    return res.status(400).json({ error: 'Invalid or missing phone number. Must be a 10-digit number.' });
+  }
   try {
     const originalMrp = Number(mrp);
     const adjustedMrp = originalMrp + 10;
-    console.log(`Updating product ID: ${id} with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp}`);
+    console.log(`Updating product ID: ${id} with original MRP: ${originalMrp}, adjusted MRP: ${adjustedMrp} for phone: ${phone}`);
     const product = await Product.findByIdAndUpdate(
       id,
       { brandName, productName, size, originalMrp, adjustedMrp, ownerPhone: phone },
