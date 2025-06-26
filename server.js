@@ -160,14 +160,13 @@ app.post('/forms', async (req, res) => {
 // API to get all forms (used in search.html and search_.html)
 app.get('/forms', async (req, res) => {
   const { phone } = req.query;
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone number is required to fetch forms.' });
+  }
   try {
     const fields = req.query.fields;
     let forms;
-    if (phone) {
-      forms = await Form.find({ phone }, fields === 'phone' ? 'phone' : {});
-    } else {
-      forms = await Form.find({});
-    }
+    forms = await Form.find({ phone }, fields === 'phone' ? 'phone' : {});
     res.json(forms);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving forms: ' + err.message });
@@ -266,8 +265,11 @@ app.put('/forms/:phone/paid', async (req, res) => {
 // API to get sells history (used in sells.html and products.html for sales history)
 app.get('/sells', async (req, res) => {
   const { phone } = req.query;
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone number is required to fetch sells.' });
+  }
   try {
-    const sells = await Sell.find(phone ? { phone } : {}).sort({ paymentDate: -1 });
+    const sells = await Sell.find({ phone }).sort({ paymentDate: -1 });
     console.log('Fetched sells:', sells.map(sell => ({ phone: sell.phone, paymentDate: sell.paymentDate })));
     res.json(sells);
   } catch (err) {
@@ -289,8 +291,11 @@ app.get('/shopping/:phone', async (req, res) => {
 // API to get all products (used in products.html and details.html)
 app.get('/products', async (req, res) => {
   const { phone } = req.query;
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone number is required to fetch products.' });
+  }
   try {
-    const products = await Product.find(phone ? { ownerPhone: phone } : {});
+    const products = await Product.find({ ownerPhone: phone });
     const formattedProducts = products.map(product => ({
       ...product._doc,
       mrp: product.adjustedMrp
