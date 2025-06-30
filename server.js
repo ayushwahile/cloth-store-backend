@@ -400,26 +400,22 @@ app.post('/create-order', async (req, res) => {
       throw new Error('Amount and customer phone are required');
     }
 
-    // Calculate Razorpay fee (2%) and GST (18% on fee)
-    const originalAmount = amount;
-    const razorpayFee = originalAmount * 0.02;
-    const gstAmount = razorpayFee * 0.18;
-    const totalAmount = originalAmount + razorpayFee + gstAmount;
+    // Use the amount sent from the client as the total amount (already includes fee and GST)
+    const totalAmount = amount;
 
     const order = await razorpay.orders.create({
-      amount: totalAmount * 100, // Amount in paise (including fee and GST)
+      amount: totalAmount * 100, // Amount in paise (client sends total including fee and GST)
       currency: 'INR',
       receipt: `receipt_${customerPhone}_${Date.now()}`,
       notes: {
-        phone: customerPhone,
-        originalAmount: originalAmount,
-        razorpayFee: razorpayFee,
-        gstAmount: gstAmount
+        phone: customerPhone
+        // No need to recalculate fee and GST here; use client-provided total
       }
     });
     res.json({ order_id: order.id });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error creating Razorpay order:', err.message, err.stack);
+    res.status(500).json({ error: 'Failed to create order: ' + err.message });
   }
 });
 
@@ -499,9 +495,9 @@ app.post('/payment-callback', async (req, res) => {
 
     // Step 4: Save to sells
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
-    const originalAmount = notes.originalAmount || total; // Use original amount from notes if available
-    const razorpayFee = notes.razorpayFee || (originalAmount * 0.02); // 2% fee
-    const gstAmount = notes.gstAmount || (razorpayFee * 0.18); // 18% GST on fee
+    const originalAmount = total; // Original amount before fees
+    const razorpayFee = originalAmount * 0.02; // 2% fee
+    const gstAmount = razorpayFee * 0.18; // 18% GST on fee
     const totalWithFees = originalAmount + razorpayFee + gstAmount; // Total amount including fees
     console.log('Calculating total with fees:', { originalAmount, razorpayFee, gstAmount, totalWithFees });
     const sell = new Sell({
