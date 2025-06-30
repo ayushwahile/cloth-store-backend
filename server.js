@@ -216,11 +216,15 @@ app.put('/forms/:phone/paid', async (req, res) => {
 
     // Save to sells history
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
+    const originalAmount = total; // Original amount before fees
+    const razorpayFee = originalAmount * 0.02; // 2% fee
+    const gstAmount = razorpayFee * 0.18; // 18% GST on fee
+    const totalWithFees = originalAmount + razorpayFee + gstAmount; // Total amount including fees
     const sell = new Sell({
       phone: form.phone,
       name: form.name,
       date: form.date,
-      total,
+      total: totalWithFees, // Use total with fees for sells history
       products: form.products.map(product => ({
         brandName: product.brandName,
         productName: product.productName,
@@ -234,12 +238,12 @@ app.put('/forms/:phone/paid', async (req, res) => {
     await sell.save();
     console.log('Saved sell with paymentDate:', sell.paymentDate);
 
-    // Update owner's bank balance
+    // Update owner's bank balance with the original amount (excluding fees)
     let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
     if (!ownerBalance) {
       ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
     }
-    ownerBalance.balance += total;
+    ownerBalance.balance += originalAmount; // Add only the original amount to balance
     await ownerBalance.save();
 
     // Delete the form from the forms collection after payment
@@ -396,12 +400,21 @@ app.post('/create-order', async (req, res) => {
       throw new Error('Amount and customer phone are required');
     }
 
+    // Calculate Razorpay fee (2%) and GST (18% on fee)
+    const originalAmount = amount;
+    const razorpayFee = originalAmount * 0.02;
+    const gstAmount = razorpayFee * 0.18;
+    const totalAmount = originalAmount + razorpayFee + gstAmount;
+
     const order = await razorpay.orders.create({
-      amount: amount * 100, // Amount in paise
+      amount: totalAmount * 100, // Amount in paise (including fee and GST)
       currency: 'INR',
       receipt: `receipt_${customerPhone}_${Date.now()}`,
       notes: {
-        phone: customerPhone
+        phone: customerPhone,
+        originalAmount: originalAmount,
+        razorpayFee: razorpayFee,
+        gstAmount: gstAmount
       }
     });
     res.json({ order_id: order.id });
@@ -486,12 +499,16 @@ app.post('/payment-callback', async (req, res) => {
 
     // Step 4: Save to sells
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
-    console.log('Calculating total:', total);
+    const originalAmount = notes.originalAmount || total; // Use original amount from notes if available
+    const razorpayFee = notes.razorpayFee || (originalAmount * 0.02); // 2% fee
+    const gstAmount = notes.gstAmount || (razorpayFee * 0.18); // 18% GST on fee
+    const totalWithFees = originalAmount + razorpayFee + gstAmount; // Total amount including fees
+    console.log('Calculating total with fees:', { originalAmount, razorpayFee, gstAmount, totalWithFees });
     const sell = new Sell({
       phone: form.phone,
       name: form.name,
       date: form.date,
-      total,
+      total: totalWithFees,
       products: form.products.map(product => ({
         brandName: product.brandName,
         productName: product.productName,
@@ -510,7 +527,7 @@ app.post('/payment-callback', async (req, res) => {
     if (!ownerBalance) {
       ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
     }
-    ownerBalance.balance += total;
+    ownerBalance.balance += originalAmount; // Add only the original amount to balance
     await ownerBalance.save();
     console.log('Owner balance updated to:', ownerBalance.balance);
 
