@@ -400,21 +400,27 @@ app.post('/create-order', async (req, res) => {
       throw new Error('Amount and customer phone are required');
     }
 
-    // Use the amount sent from the client as the total amount (already includes fee and GST)
-    const totalAmount = amount;
+    // Validate and convert amount to integer paise
+    const totalAmountInPaise = Math.round(amount * 100);
+    if (totalAmountInPaise <= 0) {
+      throw new Error('Amount must be a positive number');
+    }
 
     const order = await razorpay.orders.create({
-      amount: totalAmount * 100, // Amount in paise (client sends total including fee and GST)
+      amount: totalAmountInPaise, // Amount in paise
       currency: 'INR',
       receipt: `receipt_${customerPhone}_${Date.now()}`,
       notes: {
         phone: customerPhone
-        // No need to recalculate fee and GST here; use client-provided total
       }
     });
     res.json({ order_id: order.id });
   } catch (err) {
-    console.error('Error creating Razorpay order:', err.message, err.stack);
+    console.error('Error creating Razorpay order:', {
+      message: err.message,
+      stack: err.stack,
+      requestBody: req.body
+    });
     res.status(500).json({ error: 'Failed to create order: ' + err.message });
   }
 });
@@ -536,9 +542,9 @@ app.post('/payment-callback', async (req, res) => {
       console.warn('Form not found for deletion, possibly already deleted');
     }
 
-    // Step 7: Redirect to owner_home.html
-    const redirectUrl = `https://clothstoreayush.netlify.app/ownerButton/owner_home.html?phone=${encodeURIComponent(phone)}&payment_id=${encodeURIComponent(razorpay_payment_id)}`;
-    console.log('Redirecting to:', redirectUrl);
+    // Step 7: Redirect to bank_payment.html first, then owner_home.html
+    const redirectUrl = `https://clothstoreayush.netlify.app/bank_payment.html?phone=${encodeURIComponent(phone)}&payment_id=${encodeURIComponent(razorpay_payment_id)}`;
+    console.log('Redirecting to bank_payment.html:', redirectUrl);
     res.redirect(302, redirectUrl);
   } catch (err) {
     console.error('Error in payment callback at', new Date().toISOString(), ':', {
