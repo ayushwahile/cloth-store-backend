@@ -216,15 +216,11 @@ app.put('/forms/:phone/paid', async (req, res) => {
 
     // Save to sells history
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
-    const originalAmount = total; // Original amount before fees
-    const razorpayFee = originalAmount * 0.02; // 2% fee
-    const gstAmount = razorpayFee * 0.18; // 18% GST on fee
-    const totalWithFees = originalAmount + razorpayFee + gstAmount; // Total amount including fees
     const sell = new Sell({
       phone: form.phone,
       name: form.name,
       date: form.date,
-      total: totalWithFees, // Use total with fees for sells history
+      total,
       products: form.products.map(product => ({
         brandName: product.brandName,
         productName: product.productName,
@@ -238,12 +234,12 @@ app.put('/forms/:phone/paid', async (req, res) => {
     await sell.save();
     console.log('Saved sell with paymentDate:', sell.paymentDate);
 
-    // Update owner's bank balance with the original amount (excluding fees)
+    // Update owner's bank balance
     let ownerBalance = await OwnerBalance.findOne({ ownerId: 'owner' });
     if (!ownerBalance) {
       ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
     }
-    ownerBalance.balance += originalAmount; // Add only the original amount to balance
+    ownerBalance.balance += total;
     await ownerBalance.save();
 
     // Delete the form from the forms collection after payment
@@ -400,14 +396,8 @@ app.post('/create-order', async (req, res) => {
       throw new Error('Amount and customer phone are required');
     }
 
-    // Validate and convert amount to integer paise
-    const totalAmountInPaise = Math.round(amount * 100);
-    if (totalAmountInPaise <= 0) {
-      throw new Error('Amount must be a positive number');
-    }
-
     const order = await razorpay.orders.create({
-      amount: totalAmountInPaise, // Amount in paise
+      amount: amount * 100, // Amount in paise
       currency: 'INR',
       receipt: `receipt_${customerPhone}_${Date.now()}`,
       notes: {
@@ -416,12 +406,7 @@ app.post('/create-order', async (req, res) => {
     });
     res.json({ order_id: order.id });
   } catch (err) {
-    console.error('Error creating Razorpay order:', {
-      message: err.message,
-      stack: err.stack,
-      requestBody: req.body
-    });
-    res.status(500).json({ error: 'Failed to create order: ' + err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -501,16 +486,12 @@ app.post('/payment-callback', async (req, res) => {
 
     // Step 4: Save to sells
     const total = form.products.reduce((sum, p) => sum + (p.mrp || 0), 0);
-    const originalAmount = total; // Original amount before fees
-    const razorpayFee = originalAmount * 0.02; // 2% fee
-    const gstAmount = razorpayFee * 0.18; // 18% GST on fee
-    const totalWithFees = originalAmount + razorpayFee + gstAmount; // Total amount including fees
-    console.log('Calculating total with fees:', { originalAmount, razorpayFee, gstAmount, totalWithFees });
+    console.log('Calculating total:', total);
     const sell = new Sell({
       phone: form.phone,
       name: form.name,
       date: form.date,
-      total: totalWithFees,
+      total,
       products: form.products.map(product => ({
         brandName: product.brandName,
         productName: product.productName,
@@ -529,7 +510,7 @@ app.post('/payment-callback', async (req, res) => {
     if (!ownerBalance) {
       ownerBalance = new OwnerBalance({ ownerId: 'owner', balance: 0 });
     }
-    ownerBalance.balance += originalAmount; // Add only the original amount to balance
+    ownerBalance.balance += total;
     await ownerBalance.save();
     console.log('Owner balance updated to:', ownerBalance.balance);
 
@@ -542,9 +523,9 @@ app.post('/payment-callback', async (req, res) => {
       console.warn('Form not found for deletion, possibly already deleted');
     }
 
-    // Step 7: Redirect to bank_payment.html first, then owner_home.html
-    const redirectUrl = `https://clothstoreayush.netlify.app/bank_payment.html?phone=${encodeURIComponent(phone)}&payment_id=${encodeURIComponent(razorpay_payment_id)}`;
-    console.log('Redirecting to bank_payment.html:', redirectUrl);
+    // Step 7: Redirect to owner_home.html
+    const redirectUrl = `https://clothstoreayush.netlify.app/ownerButton/owner_home.html?phone=${encodeURIComponent(phone)}&payment_id=${encodeURIComponent(razorpay_payment_id)}`;
+    console.log('Redirecting to:', redirectUrl);
     res.redirect(302, redirectUrl);
   } catch (err) {
     console.error('Error in payment callback at', new Date().toISOString(), ':', {
